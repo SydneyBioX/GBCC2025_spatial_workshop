@@ -56,6 +56,7 @@ suppressPackageStartupMessages({
   library(tidySpatialExperiment)
   library(treekoR)
   library(Statial)
+  library(scFeatures)
 })
 ```
 
@@ -73,6 +74,7 @@ library(lisaClust)
 library(tidySpatialExperiment)
 library(treekoR)
 library(Statial)
+library(scFeatures)
 ```
 
 
@@ -84,9 +86,9 @@ It is convenient to set the number of cores for running code in parallel. Please
 use_mc <- TRUE
 
 if (use_mc) {
-  nCores <- max(parallel::detectCores() - 1, 1)
+  nCores <- max(floor((parallel::detectCores() - 1)/2), 1)
 } else {
-  nCores <- 2
+  nCores <- 1
 }
 BPPARAM <- simpleSeg:::generateBPParam(nCores)
 
@@ -234,7 +236,7 @@ cells <- cytomapper::measureObjects(
   masks,
   images,
   img_id = "imageID",
-  return_as = "spe",
+  return_as = "sce",
   feature_types = c("basic", "moment"),
   BPPARAM = BPPARAM
 )
@@ -275,7 +277,7 @@ norm_df <- as.data.frame(cbind(colData(cells), t(assay(cells, "norm"))))
 
 
 # Plots densities of normalised CK7 for each image.
-ggplot(norm_df, aes(x = SMA, colour = imageID)) +
+ggplot(norm_df, aes(x = CK7, colour = imageID)) +
   geom_density() +
   theme(legend.position = "none")
 ```
@@ -336,7 +338,7 @@ Here we cluster using the `runFuseSOM` function. We have chosen to specify the s
 # Set seed.
 set.seed(51773)
 
-# Generate SOM and cluster cells into 20 groups.
+# Generate SOM and cluster cells into 21 groups.
 cells <- runFuseSOM(
   cells,
   markers = useMarkers,
@@ -448,10 +450,6 @@ cells |>
 cells |> 
   join_features(features = c("ECAD"), assay = "norm", shape = "wide") |>
   ggplot(aes(x = cellType, y = ECAD)) + geom_boxplot()
-
-cells |> 
-  join_features(features = c("FOXP3"), assay = "norm", shape = "wide") |>
-  ggplot(aes(x = cellType, y = FOXP3)) + geom_boxplot()
 
 ```
 
@@ -577,8 +575,8 @@ kontextualResult <- Kontextual(
   parentDf = parentDf,
   r = 50,
   cellType = "cellType",
-  spatialCoords = c("m.cx","m.cy")#,
-  #cores = nCores
+  spatialCoords = c("m.cx","m.cy"),
+  cores = nCores
 )
 
 ```
@@ -628,9 +626,10 @@ cells <- lisaClust(
   cells,
   k = 4,
   Rs = seq(10,100,10),
-  sigma = 20,
+  sigma = 50,
   spatialCoords = c("m.cx", "m.cy"),
   cellType = "cellType",
+  regionName = "domain",
   cores = nCores
 )
 ```
@@ -641,13 +640,13 @@ We can try to interpret which spatial orderings the regions are quantifying usin
 
 ```{r, fig.height=5, fig.width=5}
 # Visualise the enrichment of each cell type in each region
-regionMap(cells, cellType = "cellType", limit = c(0.2, 5))+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+regionMap(cells, cellType = "cellType", region = "domain", limit = c(0.2, 5))+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
 ```
 
 
 ## Visualise regions
 
-By default, these identified regions are stored in the `regions` column in the `colData` of our object. We can quickly examine the spatial arrangement of these regions using `ggplot`.
+We can quickly examine the spatial arrangement of the spatial domains using `ggplot`.
 
 
 ```{r}
@@ -658,7 +657,7 @@ df <- colData(cells) |>
  #filter(imageID == "Point2203_pt1072_31606")
 
 # Colour cells by their region.
-ggplot(df, aes(x = m.cx, y = m.cy, colour = region)) +
+ggplot(df, aes(x = m.cx, y = m.cy, colour = domain)) +
   geom_point()
 ```
 
@@ -670,41 +669,42 @@ While much slower, we have also implemented a function for overlaying the region
 hatchingPlot(
   cells,
   useImages = "Point2206_pt1116_31620",
-  cellType = "cellTYpe",
+  cellType = "cellType",
+  region = "domain",
   spatialCoords = c("m.cx", "m.cy")
 )
 ```
 
 
-This plot is a ggplot object and so the scale can be modified with `scale_region_manual`. 
+<!-- This plot is a ggplot object and so the scale can be modified with `scale_region_manual`.  -->
 
-```{r}
-# Use hatching to visualise regions and cell types.
-# Relabel the hatching of the regions.
-hatchingPlot(
-  cells,
-  useImages = "Point2206_pt1116_31620",
-  cellType = "cellTYpe",
-  spatialCoords = c("m.cx", "m.cy"),
-  window = "square",
-  nbp = 300,
-  line.spacing = 41
-) +
+<!-- ```{r} -->
+<!-- # Use hatching to visualise regions and cell types. -->
+<!-- # Relabel the hatching of the regions. -->
+<!-- hatchingPlot( -->
+<!--   cells, -->
+<!--   useImages = "Point2206_pt1116_31620", -->
+<!--   cellType = "cellType", -->
+<!--   spatialCoords = c("m.cx", "m.cy"), -->
+<!--   window = "square", -->
+<!--   nbp = 300, -->
+<!--   line.spacing = 41 -->
+<!-- ) + -->
 
-  scale_region_manual(values = c(
-    region_1 = 2,
-    region_2 = 1,
-    region_3 = 5,
-    region_4 = 4,
-    region_5 = 3
-  )) +
+<!--   scale_region_manual(values = c( -->
+<!--     region_1 = 2, -->
+<!--     region_2 = 1, -->
+<!--     region_3 = 5, -->
+<!--     region_4 = 4, -->
+<!--     region_5 = 3 -->
+<!--   )) + -->
 
-  guides(colour = guide_legend(ncol = 2))
-```
+<!--   guides(colour = guide_legend(ncol = 2)) -->
+<!-- ``` -->
 
 ## Test for association with progression
 
-If needed, we can again quickly use the `colTest` function to test for associations between the proportions of the cells in each region and progression status using either Wilcoxon rank sum tests or t-tests. Here we see an adjusted p-value less than 0.05.
+If needed, we can again quickly use the `colTest` function to test for associations between the proportions of the cells in each domain and progression status using either Wilcoxon rank sum tests or t-tests. 
 
 
 ```{r}
@@ -712,7 +712,7 @@ If needed, we can again quickly use the `colTest` function to test for associati
 # with progression status.
 testRegion <- colTest(
   cells[, cellsToUse],
-  feature = "region",
+  feature = "domain",
   condition = "Status"
 )
 
@@ -725,23 +725,23 @@ testRegion
 ```{r}
 cells |>
   filter(cellsToUse) |>
-  filter(region == "region_1") |>
+  filter(domain == "region_1") |>
   colTest(feature = "cellType", condition = "Status")
 
 cells |>
   filter(cellsToUse) |>
-  filter(region == "region_2") |>
+  filter(domain == "region_2") |>
   colTest(feature = "cellType", condition = "Status")
 
 cells |>
   filter(cellsToUse) |>
-  filter(region == "region_3") |>
+  filter(domain == "region_3") |>
   colTest(feature = "cellType", condition = "Status")
 
 
 cells |>
   filter(cellsToUse) |>
-  filter(region == "region_4") |>
+  filter(domain == "region_4") |>
   colTest(feature = "cellType", condition = "Status")
 
 # cells |>
@@ -858,7 +858,7 @@ stateChangesTcells <- calcStateChanges(
 stateMatTcells <- prepMatrix(stateChangesTcells, replaceVal = NA, column = "tval")
 
 stateMatTcells[stateMatTcells==Inf] <- NA
-stateMatTcells <- stateMatTcells[,colMeans(is.na(stateMatTcells[rownames(prop),]))<0.6]
+stateMatTcells <- stateMatTcells[,colMeans(is.na(stateMatTcells[rownames(prop),]))<0.4]
 
 
 stateResultsTcells <- colTest(stateMatTcells[rownames(prop), ], droplevels(clinical[rownames(prop), "Status"]))
@@ -1028,316 +1028,316 @@ boxplot(data[["gene_mean_celltype"]][rownames(prop),"T_cell__region_4--CD8"]~as.
 
 
 
-# ClassifyR: Classification
+<!-- # ClassifyR: Classification -->
 
-Our ClassifyR package, [https://github.com/SydneyBioX/ClassifyR](https://github.com/SydneyBioX/ClassifyR), formalises a convenient framework for evaluating classification in R. We provide functionality to easily include four key modelling stages; Data transformation, feature selection, classifier training and prediction; into a cross-validation loop. Here we use the `crossValidate` function to perform 100 repeats of 5-fold cross-validation to evaluate the performance of an elastic net model applied to three quantification of our MIBI-TOF data; cell type proportions, average mean of each cell type and region proportions.
+<!-- Our ClassifyR package, [https://github.com/SydneyBioX/ClassifyR](https://github.com/SydneyBioX/ClassifyR), formalises a convenient framework for evaluating classification in R. We provide functionality to easily include four key modelling stages; Data transformation, feature selection, classifier training and prediction; into a cross-validation loop. Here we use the `crossValidate` function to perform 100 repeats of 5-fold cross-validation to evaluate the performance of an elastic net model applied to three quantification of our MIBI-TOF data; cell type proportions, average mean of each cell type and region proportions. -->
 
 
 
 
 
-```{r message=FALSE, warning=FALSE}
-# Create list to store data.frames
-data <- list()
+<!-- ```{r message=FALSE, warning=FALSE} -->
+<!-- # Create list to store data.frames -->
+<!-- data <- list() -->
 
-# Add proportions of each cell type in each image
-data[["props"]] <- getProp(cells, "clusters")
+<!-- # Add proportions of each cell type in each image -->
+<!-- data[["props"]] <- getProp(cells, "clusters") -->
 
-# Add pair-wise associations
-data[["dist"]] <- getPairwise(
-  cells,
-  spatialCoords = c("m.cx", "m.cy"),
-  cellType = "clusters",
-  Rs = c(20, 50, 100),
-  sigma = 50,
-  cores = nCores
-)
-data[["dist"]] <- as.data.frame(data[["dist"]])
+<!-- # Add pair-wise associations -->
+<!-- data[["dist"]] <- getPairwise( -->
+<!--   cells, -->
+<!--   spatialCoords = c("m.cx", "m.cy"), -->
+<!--   cellType = "clusters", -->
+<!--   Rs = c(20, 50, 100), -->
+<!--   sigma = 50, -->
+<!--   cores = nCores -->
+<!-- ) -->
+<!-- data[["dist"]] <- as.data.frame(data[["dist"]]) -->
 
 
-# Add proportions of each region in each image
-# to the list of dataframes.
-data[["regions"]] <- getProp(cells, "region")
+<!-- # Add proportions of each region in each image -->
+<!-- # to the list of dataframes. -->
+<!-- data[["regions"]] <- getProp(cells, "region") -->
 
-# Subset data images with progression status and NA clinical variables.
-measurements <- lapply(data, function(x) x[imagesToUse, ])
+<!-- # Subset data images with progression status and NA clinical variables. -->
+<!-- measurements <- lapply(data, function(x) x[imagesToUse, ]) -->
 
-# Set seed
-set.seed(51773)
+<!-- # Set seed -->
+<!-- set.seed(51773) -->
 
-# Perform cross-validation of an elastic net model
-# with 100 repeats of 5-fold cross-validation.
-cv <- crossValidate(
-  measurements = measurements,
-  outcome = clinical[imagesToUse, "Status"],
-  classifier = "GLM",
-  nFolds = 5,
-  nRepeats = 100,
-  nCores = nCores
-)
-```
+<!-- # Perform cross-validation of an elastic net model -->
+<!-- # with 100 repeats of 5-fold cross-validation. -->
+<!-- cv <- crossValidate( -->
+<!--   measurements = measurements, -->
+<!--   outcome = clinical[imagesToUse, "Status"], -->
+<!--   classifier = "GLM", -->
+<!--   nFolds = 5, -->
+<!--   nRepeats = 100, -->
+<!--   nCores = nCores -->
+<!-- ) -->
+<!-- ``` -->
 
 
 
 
 
-## Visualise cross-validated prediction performance
+<!-- ## Visualise cross-validated prediction performance -->
 
-Here we use the `performancePlot` function to assess the AUC from each repeat of the 5-fold cross-validation. We see that the lisaClust regions appear to capture information which is predictive of progression status of the patients.
+<!-- Here we use the `performancePlot` function to assess the AUC from each repeat of the 5-fold cross-validation. We see that the lisaClust regions appear to capture information which is predictive of progression status of the patients. -->
 
-```{r}
-# Calculate AUC for each cross-validation repeat and plot.
-performancePlot(
-  cv,
-  metric = "AUC",
-  characteristicsList = list(x = "Assay Name")
-)
-```
+<!-- ```{r} -->
+<!-- # Calculate AUC for each cross-validation repeat and plot. -->
+<!-- performancePlot( -->
+<!--   cv, -->
+<!--   metric = "AUC", -->
+<!--   characteristicsList = list(x = "Assay Name") -->
+<!-- ) -->
+<!-- ``` -->
 
 
-# Summary
+<!-- # Summary -->
 
-Here we have used a pipeline of our spatial analysis R packages to demonstrate an easy way to segment, cluster, normalise, quantify and classify high dimensional in situ cytometry data all within R.
+<!-- Here we have used a pipeline of our spatial analysis R packages to demonstrate an easy way to segment, cluster, normalise, quantify and classify high dimensional in situ cytometry data all within R. -->
 
 
 
-```{r}
+<!-- ```{r} -->
 
-cor_between_channels <- function(img) {
-  channels <- dimnames(img)[[3]]
-  corr <- NULL
-  
-  reshaped <- apply(img, 3, as.vector)
-  
-  for (i in channels) {
-    for (j in channels) {
-      # Flatten each colour channel into a vector
-      v1 <- as.vector(img[,,i])
-      v2 <- as.vector(img[,,j])
-      
-      relationship <- paste(i,j,sep = "__")
-      corr[relationship] <- cor(v1, v2)
-          }
-  }
- 
-  return(corr)
-}
+<!-- cor_between_channels <- function(img) { -->
+<!--   channels <- dimnames(img)[[3]] -->
+<!--   corr <- NULL -->
 
+<!--   reshaped <- apply(img, 3, as.vector) -->
 
-# Apply to all images
-cor_list <- lapply(images[1:2], cor_between_channels)
+<!--   for (i in channels) { -->
+<!--     for (j in channels) { -->
+<!--       # Flatten each colour channel into a vector -->
+<!--       v1 <- as.vector(img[,,i]) -->
+<!--       v2 <- as.vector(img[,,j]) -->
 
+<!--       relationship <- paste(i,j,sep = "__") -->
+<!--       corr[relationship] <- cor(v1, v2) -->
+<!--           } -->
+<!--   } -->
 
+<!--   return(corr) -->
+<!-- } -->
 
 
-```
-
-
-
-```{r}
-make_channel_pairs <- function(channel_names) {
-  combos <- combn(channel_names, 2, simplify = FALSE)
-  named_list <- setNames(
-    lapply(combos, identity),
-    sapply(combos, function(x) paste(x, collapse = "__"))
-  )
-  return(named_list)
-}
-
-channelPairs <- make_channel_pairs(dimnames(images[[1]])[[3]])
-
-spatstat.explore::dendensity(img[,,1])
-
-function(img, pairs){
-  use <- sample(ncol(img)*nrow(img), 1000)
- corr <- lapply(pairs, function(x){
-   cor(as.vector(img[,,x[1]])[use], as.vector(img[,,x[2]])[use])
- })
-}
-
-disc <- makeBrush(21, shape='disc')
-smoothImages <- BiocParallel::bplapply(images, function(x){
-  apply(x,3,function(img){
-    filter2(img, disc)
-  })
-}, BPPARAM = BPPARAM)
-
-correlations <- lapply(images, function(img){
-unlist(lapply(channelPairs, function(x){
-  cor(as.vector(img[,,x[1]]), as.vector(img[,,x[2]]), use = "complete")
-}))})
-
-corr <- do.call("rbind", correlations)
-tests <- apply(corr[rownames(prop),], 2, function(x){
-  t.test(x~clinical[rownames(prop), "Status"])$stat
-})
-
-
-CD8_ER <- lapply(images[rownames(prop)], function(img){
-  disc <- makeBrush(51, shape='disc')
-  # CD8 <- gblur((img[,,"CD8"]), 5)
-  # ER <- gblur((img[,,"ECAD"]), 5)
- CD8 <- filter2((img[,,"CD8"]), disc)
- ECAD <- filter2((img[,,"ECAD"]), disc)
-
-  
-#   CD8 <- imager::correlate(imager::as.cimg(as.matrix(img[,,"CD8"])),imager::as.cimg(disc))
-#   CD8 <- as.matrix(CD8)
-# 
-# #  ER <- imager::correlate(imager::as.cimg(as.matrix(img[,,"ER"])),imager::as.cimg(disc))
-# #  ER <- as.matrix(ER)
-# 
-#   ECAD <- imager::correlate(imager::as.cimg(as.matrix(img[,,"ECAD"])),imager::as.cimg(disc))
-#   ECAD <- as.matrix(ECAD)
-  
-  #corr <- cor(as.vector(CD8), as.vector(ECAD), use = "complete")
-  #corr
-  compute_top_right_proportions_fast(cbind(as.vector(CD8), as.vector(ECAD)), 0.33)[1,2]
- 
-})
-
-CD8_ER <- unlist(CD8_ER)
-
-
-boxplot(CD8_ER[rownames(prop)]~clinical[rownames(prop), "Status"])
+<!-- # Apply to all images -->
+<!-- cor_list <- lapply(images[1:2], cor_between_channels) -->
 
-t.test(CD8_ER[rownames(prop)]~clinical[rownames(prop), "Status"])
 
-```
-```{r}
 
 
+<!-- ``` -->
 
-compute_top_right_proportions_fast <- function(mat, threshold = 0.5) {
-  # Min-max scale each column
-trim_99 <- function(x) {
-q99 <- quantile(x, 0.99, na.rm = TRUE)
-x[x > q99] <- q99
- x
-}
- mat <- apply(mat, 2, trim_99)
 
-  
-  scaled <- sweep(mat, 2, apply(mat, 2, min), "-")
-  scaled <- sweep(scaled, 2, apply(mat, 2, max) - apply(mat, 2, min), "/")
-  
-  # Logical matrix: TRUE if value > threshold
-  mask <- scaled > threshold
-  
-  # Compute pairwise proportions using cross-product
-  proportions <- (t(mask) %*% mask) / nrow(mat)
-  
-  # Set diagonal to 0
-  diag(proportions) <- 0
-  
-  # Add names if available
-  if (!is.null(colnames(mat))) {
-    colnames(proportions) <- colnames(mat)
-    rownames(proportions) <- colnames(mat)
-  }
-  
-  return(proportions)
-}
 
+<!-- ```{r} -->
+<!-- make_channel_pairs <- function(channel_names) { -->
+<!--   combos <- combn(channel_names, 2, simplify = FALSE) -->
+<!--   named_list <- setNames( -->
+<!--     lapply(combos, identity), -->
+<!--     sapply(combos, function(x) paste(x, collapse = "__")) -->
+<!--   ) -->
+<!--   return(named_list) -->
+<!-- } -->
 
+<!-- channelPairs <- make_channel_pairs(dimnames(images[[1]])[[3]]) -->
 
+<!-- spatstat.explore::dendensity(img[,,1]) -->
 
+<!-- function(img, pairs){ -->
+<!--   use <- sample(ncol(img)*nrow(img), 1000) -->
+<!--  corr <- lapply(pairs, function(x){ -->
+<!--    cor(as.vector(img[,,x[1]])[use], as.vector(img[,,x[2]])[use]) -->
+<!--  }) -->
+<!-- } -->
 
+<!-- disc <- makeBrush(21, shape='disc') -->
+<!-- smoothImages <- BiocParallel::bplapply(images, function(x){ -->
+<!--   apply(x,3,function(img){ -->
+<!--     filter2(img, disc) -->
+<!--   }) -->
+<!-- }, BPPARAM = BPPARAM) -->
 
-compute_colour_correlations_fast <- function(image_array, patch_size = 8) {
-  h <- dim(image_array)[1]
-  w <- dim(image_array)[2]
-  ch <- dim(image_array)[3]
-  
-  # Crop image to fit patch size
-  h_crop <- floor(h / patch_size) * patch_size
-  w_crop <- floor(w / patch_size) * patch_size
-  image_array <- image_array[1:h_crop, 1:w_crop, ]
-  
-  # Reshape into patches
-  patches <- array(image_array, dim = c(patch_size, h_crop / patch_size, patch_size, w_crop / patch_size, ch))
-  patches <- aperm(patches, c(2, 4, 5, 1, 3))  # [patch_y, patch_x, channel, patch_h, patch_w]
-  
-  # Compute mean intensity per patch per channel
-  patch_means <- apply(patches, c(1, 2, 3), mean)  # [patch_y, patch_x, channel]
-  patch_means <- matrix(aperm(patch_means, c(1, 2, 3)), ncol = ch)  # [num_patches, channels]
-  
-  # Correlation matrix
- # cor(patch_means)
-  
-  # Continuous mutual information
-  compute_top_right_proportions_fast(patch_means, threshold = 0.1)
+<!-- correlations <- lapply(images, function(img){ -->
+<!-- unlist(lapply(channelPairs, function(x){ -->
+<!--   cor(as.vector(img[,,x[1]]), as.vector(img[,,x[2]]), use = "complete") -->
+<!-- }))}) -->
 
-}
+<!-- corr <- do.call("rbind", correlations) -->
+<!-- tests <- apply(corr[rownames(prop),], 2, function(x){ -->
+<!--   t.test(x~clinical[rownames(prop), "Status"])$stat -->
+<!-- }) -->
 
 
-corrs <- lapply(images, function(img){
-  compute_colour_correlations_fast(img, patch_size = 50)
-})
+<!-- CD8_ER <- lapply(images[rownames(prop)], function(img){ -->
+<!--   disc <- makeBrush(51, shape='disc') -->
+<!--   # CD8 <- gblur((img[,,"CD8"]), 5) -->
+<!--   # ER <- gblur((img[,,"ECAD"]), 5) -->
+<!--  CD8 <- filter2((img[,,"CD8"]), disc) -->
+<!--  ECAD <- filter2((img[,,"ECAD"]), disc) -->
 
-corArray <- abind::abind(corrs, along = 3)
 
-corTest <- apply(corArray[,,rownames(prop)], c(1,2), function(x){
-  tryCatch({t.test(x~clinical[rownames(prop), "Status"])$statistic}, error = function(e)NA)
-})
+<!-- #   CD8 <- imager::correlate(imager::as.cimg(as.matrix(img[,,"CD8"])),imager::as.cimg(disc)) -->
+<!-- #   CD8 <- as.matrix(CD8) -->
+<!-- #  -->
+<!-- # #  ER <- imager::correlate(imager::as.cimg(as.matrix(img[,,"ER"])),imager::as.cimg(disc)) -->
+<!-- # #  ER <- as.matrix(ER) -->
+<!-- #  -->
+<!-- #   ECAD <- imager::correlate(imager::as.cimg(as.matrix(img[,,"ECAD"])),imager::as.cimg(disc)) -->
+<!-- #   ECAD <- as.matrix(ECAD) -->
 
-colnames(corTest) <- rownames(corTest) <- dimnames(images[[1]])[[3]]
+<!--   #corr <- cor(as.vector(CD8), as.vector(ECAD), use = "complete") -->
+<!--   #corr -->
+<!--   compute_top_right_proportions_fast(cbind(as.vector(CD8), as.vector(ECAD)), 0.33)[1,2] -->
 
+<!-- }) -->
 
-# Assume `mat` is your matrix with row and column names
-vec <- as.vector(corTest)
-names(vec) <- outer(rownames(corTest), colnames(corTest), paste, sep = "__")
-names(vec) <- as.vector(names(vec))
+<!-- CD8_ER <- unlist(CD8_ER) -->
 
 
-corArray2 <- corArray
-colnames(corArray2) <- rownames(corArray2) <- dimnames(images[[1]])[[3]]
+<!-- boxplot(CD8_ER[rownames(prop)]~clinical[rownames(prop), "Status"]) -->
 
-boxplot(corArray2["ER","CD8",rownames(prop)]~clinical[rownames(prop), "Status"])
-t.test(corArray2["ECAD","CD8",rownames(prop)]~clinical[rownames(prop), "Status"])
+<!-- t.test(CD8_ER[rownames(prop)]~clinical[rownames(prop), "Status"]) -->
 
+<!-- ``` -->
+<!-- ```{r} -->
 
-boxplot(corArray2["FOXP3","IDO1",rownames(prop)]~clinical[rownames(prop), "Status"])
 
 
-```
+<!-- compute_top_right_proportions_fast <- function(mat, threshold = 0.5) { -->
+<!--   # Min-max scale each column -->
+<!-- trim_99 <- function(x) { -->
+<!-- q99 <- quantile(x, 0.99, na.rm = TRUE) -->
+<!-- x[x > q99] <- q99 -->
+<!--  x -->
+<!-- } -->
+<!--  mat <- apply(mat, 2, trim_99) -->
 
 
-```{r}
-# Set patch size
-patch_height <- 16
-patch_width <- 16
+<!--   scaled <- sweep(mat, 2, apply(mat, 2, min), "-") -->
+<!--   scaled <- sweep(scaled, 2, apply(mat, 2, max) - apply(mat, 2, min), "/") -->
 
-# Get dimensions
-img_dims <- dim(img)
-h <- img_dims[1]
-w <- img_dims[2]
-channels <- img_dims[3]
+<!--   # Logical matrix: TRUE if value > threshold -->
+<!--   mask <- scaled > threshold -->
 
-# Function to compute patch means
-get_patch_means <- function(img, ph, pw) {
-  h_patches <- floor(h / ph)
-  w_patches <- floor(w / pw)
+<!--   # Compute pairwise proportions using cross-product -->
+<!--   proportions <- (t(mask) %*% mask) / nrow(mat) -->
 
-  # Initialize output: patch x channel
-  patch_means <- array(NA, dim = c(h_patches, w_patches, channels))
+<!--   # Set diagonal to 0 -->
+<!--   diag(proportions) <- 0 -->
 
-  for (ch in 1:channels) {
-    for (i in 1:h_patches) {
-      for (j in 1:w_patches) {
-        patch <- img[((i - 1) * ph + 1):(i * ph), ((j - 1) * pw + 1):(j * pw), ch]
-        patch_means[i, j, ch] <- mean(patch)
-      }
-    }
-  }
-  return(patch_means)
-}
+<!--   # Add names if available -->
+<!--   if (!is.null(colnames(mat))) { -->
+<!--     colnames(proportions) <- colnames(mat) -->
+<!--     rownames(proportions) <- colnames(mat) -->
+<!--   } -->
 
-# Compute means
-means <- get_patch_means(img, patch_height, patch_width)
+<!--   return(proportions) -->
+<!-- } -->
 
 
-```
+
+
+
+
+<!-- compute_colour_correlations_fast <- function(image_array, patch_size = 8) { -->
+<!--   h <- dim(image_array)[1] -->
+<!--   w <- dim(image_array)[2] -->
+<!--   ch <- dim(image_array)[3] -->
+
+<!--   # Crop image to fit patch size -->
+<!--   h_crop <- floor(h / patch_size) * patch_size -->
+<!--   w_crop <- floor(w / patch_size) * patch_size -->
+<!--   image_array <- image_array[1:h_crop, 1:w_crop, ] -->
+
+<!--   # Reshape into patches -->
+<!--   patches <- array(image_array, dim = c(patch_size, h_crop / patch_size, patch_size, w_crop / patch_size, ch)) -->
+<!--   patches <- aperm(patches, c(2, 4, 5, 1, 3))  # [patch_y, patch_x, channel, patch_h, patch_w] -->
+
+<!--   # Compute mean intensity per patch per channel -->
+<!--   patch_means <- apply(patches, c(1, 2, 3), mean)  # [patch_y, patch_x, channel] -->
+<!--   patch_means <- matrix(aperm(patch_means, c(1, 2, 3)), ncol = ch)  # [num_patches, channels] -->
+
+<!--   # Correlation matrix -->
+<!--  # cor(patch_means) -->
+
+<!--   # Continuous mutual information -->
+<!--   compute_top_right_proportions_fast(patch_means, threshold = 0.1) -->
+
+<!-- } -->
+
+
+<!-- corrs <- lapply(images, function(img){ -->
+<!--   compute_colour_correlations_fast(img, patch_size = 50) -->
+<!-- }) -->
+
+<!-- corArray <- abind::abind(corrs, along = 3) -->
+
+<!-- corTest <- apply(corArray[,,rownames(prop)], c(1,2), function(x){ -->
+<!--   tryCatch({t.test(x~clinical[rownames(prop), "Status"])$statistic}, error = function(e)NA) -->
+<!-- }) -->
+
+<!-- colnames(corTest) <- rownames(corTest) <- dimnames(images[[1]])[[3]] -->
+
+
+<!-- # Assume `mat` is your matrix with row and column names -->
+<!-- vec <- as.vector(corTest) -->
+<!-- names(vec) <- outer(rownames(corTest), colnames(corTest), paste, sep = "__") -->
+<!-- names(vec) <- as.vector(names(vec)) -->
+
+
+<!-- corArray2 <- corArray -->
+<!-- colnames(corArray2) <- rownames(corArray2) <- dimnames(images[[1]])[[3]] -->
+
+<!-- boxplot(corArray2["ER","CD8",rownames(prop)]~clinical[rownames(prop), "Status"]) -->
+<!-- t.test(corArray2["ECAD","CD8",rownames(prop)]~clinical[rownames(prop), "Status"]) -->
+
+
+<!-- boxplot(corArray2["FOXP3","IDO1",rownames(prop)]~clinical[rownames(prop), "Status"]) -->
+
+
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- # Set patch size -->
+<!-- patch_height <- 16 -->
+<!-- patch_width <- 16 -->
+
+<!-- # Get dimensions -->
+<!-- img_dims <- dim(img) -->
+<!-- h <- img_dims[1] -->
+<!-- w <- img_dims[2] -->
+<!-- channels <- img_dims[3] -->
+
+<!-- # Function to compute patch means -->
+<!-- get_patch_means <- function(img, ph, pw) { -->
+<!--   h_patches <- floor(h / ph) -->
+<!--   w_patches <- floor(w / pw) -->
+
+<!--   # Initialize output: patch x channel -->
+<!--   patch_means <- array(NA, dim = c(h_patches, w_patches, channels)) -->
+
+<!--   for (ch in 1:channels) { -->
+<!--     for (i in 1:h_patches) { -->
+<!--       for (j in 1:w_patches) { -->
+<!--         patch <- img[((i - 1) * ph + 1):(i * ph), ((j - 1) * pw + 1):(j * pw), ch] -->
+<!--         patch_means[i, j, ch] <- mean(patch) -->
+<!--       } -->
+<!--     } -->
+<!--   } -->
+<!--   return(patch_means) -->
+<!-- } -->
+
+<!-- # Compute means -->
+<!-- means <- get_patch_means(img, patch_height, patch_width) -->
+
+
+<!-- ``` -->
 
 
 
