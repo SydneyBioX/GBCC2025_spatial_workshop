@@ -1,0 +1,16 @@
+url:  https://sydneybiox.github.io/GBCC2025_spatial_workshop/
+
+template:
+  bootstrap: 5
+
+home:
+  title: "Spatial Omics Analysis with Bioconductor"
+  type: inverse
+
+
+navbar:
+  right:
+   - icon: fa-github
+     href: https://github.com/SydneyBioX/GBCC2025_spatial_workshop
+     
+
