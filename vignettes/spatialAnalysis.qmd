@@ -95,7 +95,7 @@ theme_set(theme_classic())
 
 # Context
 
-In the following we will re-analyse some MIBI-TOF data [(Risom et al, 2022)](https://www.sciencedirect.com/science/article/pii/S0092867421014860?via%3Dihub#!) profiling the spatial landscape of ductal carcinoma in situ (DCIS), which is a pre-invasive lesion that is thought to be a precursor to invasive breast cancer (IBC). The key conclusion of this manuscript (amongst others) is that spatial information about cells can be used to predict disease progression in patients. We will use our spicy workflow to make a similar conclusion.
+In the following we will re-analyse some MIBI-TOF data [(Risom et al, 2022)](https://www.sciencedirect.com/science/article/pii/S0092867421014860?via%3Dihub#!) profiling the spatial landscape of ductal carcinoma in situ (DCIS), which is a pre-invasive lesion that is thought to be a precursor to invasive breast cancer (IBC). The key conclusion of this manuscript (amongst others) is that spatial information about cells can be used to predict disease progression in patients. 
 
 
 # Read in images
