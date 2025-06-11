@@ -182,7 +182,7 @@ masks <- simpleSeg(
   images,
   nucleus = c("HH3"),
   cellBody = "dilate",
-  transform = "sqrt",
+  transform = c("tissueMask","sqrt"),
   sizeSelection = 20,
   discSize = 5,
   cores = nCores
@@ -338,13 +338,17 @@ Here we cluster using the `runFuseSOM` function. We have chosen to specify the s
 # Set seed.
 set.seed(51773)
 
+cells@metadata <- list()
+
 # Generate SOM and cluster cells into 21 groups.
 cells <- runFuseSOM(
   cells,
   markers = useMarkers,
   assay = "norm",
-  numClusters = 21
+  numClusters = 16
 )
+
+cells$cellType <- cells$clusters
 ```
 
 
@@ -389,27 +393,22 @@ cells$cellType <- cells |>
   colData() |>
   as.data.frame() |>
   mutate(cellType = factor(case_when(
-      clusters == "cluster_1" ~ "CK_low_tumour",
-      clusters == "cluster_2" ~ "Luminal",
-      clusters == "cluster_3" ~ "T_cell_dn",
-      clusters == "cluster_4" ~ "T_cell_CD8",
-      clusters == "cluster_5" ~ "T_cell_CD4",
-      clusters == "cluster_6" ~ "Granulocytes",
-      clusters == "cluster_7" ~ "B_cells",
-      clusters == "cluster_8" ~ "DC",
-      clusters == "cluster_9" ~ "Myofibroblasts",
-      clusters == "cluster_10" ~ "Monocyte",
-      clusters == "cluster_11" ~ "Monocyte",
-      clusters == "cluster_12" ~ "DC",
-      clusters == "cluster_13" ~ "ImmuneOther",
-      clusters == "cluster_14" ~ "CAF",
-      clusters == "cluster_15" ~ "APC",
-      clusters == "cluster_16" ~ "Macrophage",
-      clusters == "cluster_17" ~ "EMT",
-      clusters == "cluster_18" ~ "Mast",
-      clusters == "cluster_19" ~ "Endothelial",
-      clusters == "cluster_20" ~ "Basal",
-      clusters == "cluster_21" ~ "Myoepithelial",
+      clusters == "cluster_1" ~ "Tumour",
+      clusters == "cluster_2" ~ "T_cell_CD4",
+      clusters == "cluster_3" ~ "T_cell_CD8",
+      clusters == "cluster_4" ~ "Granulocytes",
+      clusters == "cluster_5" ~ "B_cells",
+      clusters == "cluster_6" ~ "DC",
+      clusters == "cluster_7" ~ "Myoepthilial",
+      clusters == "cluster_8" ~ "Monocyte",
+      clusters == "cluster_9" ~ "OtherImmune",
+      clusters == "cluster_10" ~ "Fibroblast",
+      clusters == "cluster_11" ~ "OtherImmune",
+      clusters == "cluster_12" ~ "Macrophage",
+      clusters == "cluster_13" ~ "Endothelial",
+      clusters == "cluster_14" ~ "Mast",
+      clusters == "cluster_15" ~ "Endothelial",
+      clusters == "cluster_16" ~ "Myoepthilial",
       TRUE ~ clusters
   ))) |> 
   pull(cellType) 
@@ -440,7 +439,8 @@ colData(cells)$cellType |>
 reducedDim(cells, "spatialCoords") <- cbind(x = cells$m.cx, y = cells$m.cy)
 
 cells |> 
-  filter(imageID == "Point2203_pt1072_31606") |> 
+  #filter(imageID == "Point2203_pt1072_31606") |> 
+  filter(imageID == "Point2206_pt1116_31620") |>
   plotReducedDim("spatialCoords", colour_by = "cellType")
 
 ```
@@ -486,7 +486,9 @@ We recommend using a package such as `diffcyt` for testing for changes in abunda
 
 ```{r}
 # Select cells which belong to individuals with progressor status.
-cellsToUse <- cells$Status %in% c("nonprogressor", "progressor")
+cellsToUse <- cells$Status %in% c("nonprogressor","progressor") &
+  cells$PAM50 == "LumB" & !is.na(cells$PAM50)
+#cells$Status %in% c("nonprogressor", "progressor")
 
 # Perform simple wicoxon rank sum tests on the columns of the proportion matrix.
 testProp <- colTest(cells[, cellsToUse],
@@ -500,7 +502,7 @@ testProp
 ```{r}
 imagesToUse <- rownames(clinical)[clinical[, "Status"] %in% c("nonprogressor", "progressor")]
 
-prop <- getProp(cells[,cells$imageID%in%imagesToUse], feature = "cellType")
+prop <- getProp(cells[,cellsToUse], feature = "cellType")
 clusterToUse <- rownames(testProp)[1]
 
 boxplot(prop[imagesToUse, clusterToUse] ~ droplevels(clinical[imagesToUse, "Status"]))
@@ -513,18 +515,19 @@ boxplot(prop[imagesToUse, clusterToUse] ~ droplevels(clinical[imagesToUse, "Stat
 
 ```{r}
 # Test for changes in pair-wise spatial relationships between cell types.
+
 spicyTest <- spicy(
   cells[, cellsToUse],
   condition = "Status",
   cellType = "cellType",
   imageID = "imageID",
   spatialCoords = c("m.cx","m.cy"),
-  Rs = c(20, 50, 100),
-  sigma = 50,
+  r = 50,
+  sigma = 20,
   cores = nCores
 )
 
-topPairs(spicyTest, n = 10)
+topPairs(spicyTest, n = 20)
 ```
 
 
@@ -561,7 +564,11 @@ set.seed(51773)
 # # Convert treekoR result to a name list of parents and children.
 # treekorParents = getParentPhylo(clusterTree)
 
-treekorParents <- list(Tumour = c("Luminal", "Basal", "EMT", "CK_low_tumour"), T_cell = c("T_cell_dn", "T_cell_CD8", "T_cell_CD4"))
+treekorParents <- list(T_cell = c("T_cell_CD8", "T_cell_CD4"), Immune = c("B_cells", "T_cell_CD8", "T_cell_CD4", "Granulocytes", "OtherImmune", "Mast", "Macrophage", "Monocyte", "DC"))
+
+#treekorParents <- list(T_cell = c("cluster_2", "cluster_3"), Immune = c("cluster_2","cluster_3","cluster_4","cluster_5","cluster_6","cluster_8", "cluster_9","cluster_11", "cluster_13"))
+
+
 
 parentDf <- parentCombinations(
   all = as.character(unique(cells$cellType)),
@@ -571,9 +578,9 @@ parentDf <- parentCombinations(
 #cells$cellTypeChar <- as.character(cells$cellType)
 
 kontextualResult <- Kontextual(
-  cells = cells,
+  cells = cells[, cellsToUse],
   parentDf = parentDf,
-  r = 50,
+  r = 100,
   cellType = "cellType",
   spatialCoords = c("m.cx","m.cy"),
   cores = nCores
@@ -596,24 +603,6 @@ head(kontextResults)
 
 
 
-```{r}
-kontextResults[grep("T_cell_CD8__CK_low_tumour_",rownames(kontextResults)),]
-
-kontextResults[grep("CK_low_tumour__T_cell_CD8_",rownames(kontextResults)),]
-
-kontextResults[grep("T_cell_CD8__T_cell",rownames(kontextResults)),]
-
-
-boxplot(kontextMat[rownames(prop), "T_cell_CD8__CK_low_tumour__Tumour"]~ droplevels(clinical[rownames(prop), "Status"]))
-
-
-boxplot(kontextMat[rownames(prop), "CK_low_tumour__T_cell_CD8__T_cell"]~ droplevels(clinical[rownames(prop), "Status"]))
-
-```
-
-
-
-
 # Are there any broad spatial domains associated with progression?
 
 
@@ -625,8 +614,8 @@ set.seed(51773)
 cells <- lisaClust(
   cells,
   k = 4,
-  Rs = seq(10,100,10),
-  sigma = 50,
+  r = c(20,50,100),
+  sigma = 20,
   spatialCoords = c("m.cx", "m.cy"),
   cellType = "cellType",
   regionName = "domain",
@@ -726,23 +715,84 @@ testRegion
 cells |>
   filter(cellsToUse) |>
   filter(domain == "region_1") |>
-  colTest(feature = "cellType", condition = "Status")
+  colTest(feature = "cellType", condition = "Status", type = "wilcox")
 
 cells |>
   filter(cellsToUse) |>
   filter(domain == "region_2") |>
-  colTest(feature = "cellType", condition = "Status")
+  colTest(feature = "cellType", condition = "Status", type = "wilcox")
 
 cells |>
   filter(cellsToUse) |>
   filter(domain == "region_3") |>
-  colTest(feature = "cellType", condition = "Status")
-
+  colTest(feature = "cellType", condition = "Status", type = "wilcox")
 
 cells |>
   filter(cellsToUse) |>
   filter(domain == "region_4") |>
-  colTest(feature = "cellType", condition = "Status")
+  colTest(feature = "cellType", condition = "Status", type = "wilcox")
+
+
+
+
+pval = NULL
+
+propD1 <- getProp(cells[,cells$domain=="region_1"])
+propD2 <- getProp(cells[,cells$domain=="region_2"])
+propD3 <- getProp(cells[,cells$domain=="region_3"])
+propD4 <- getProp(cells[,cells$domain=="region_4"])
+
+
+
+for(ct in unique(cells$cellType)){
+  
+  df <- data.frame(D1 = propD1[rownames(prop),ct], D2 = propD2[rownames(prop),ct], D3 = propD3[rownames(prop),ct], D4 = propD4[rownames(prop),ct], Status = as.character(clinical[rownames(prop), "Status"]), imageID = rownames(prop))
+ df_long <- tidyr::pivot_longer(
+  df,
+  cols = c("D1", "D2", "D3", "D4"),
+  names_to = "Domain",
+  values_to = "Proportion"
+)
+  
+ model_full <- lmer(sqrt(Proportion) ~ Domain*Status + (1 | imageID), data = df_long)
+  model_add <- lmer(sqrt(Proportion) ~ Domain+Status + (1 | imageID), data = df_long)
+  an <- anova(model_full, model_add)
+  pval[ct] <- an$`Pr(>Chisq)`[2]
+}
+
+sort(pval)
+
+ct <- "T_cell_CD8"
+
+  df <- data.frame(D1 = propD1[rownames(prop),ct], D2 = propD2[rownames(prop),ct], D3 = propD3[rownames(prop),ct],D4 = propD4[rownames(prop),ct], Status = as.character(clinical[rownames(prop), "Status"]), imageID = rownames(prop))
+ df_long <- tidyr::pivot_longer(
+  df,
+  cols = c("D1", "D2", "D3", "D4"),
+  names_to = "Domain",
+  values_to = "Proportion"
+)
+
+model <- lmer(sqrt(Proportion) ~ Domain*Status + (1 | imageID), data = df_long)
+new_data <- expand.grid(
+  Domain = unique(df_long$Domain),
+  Status = unique(df_long$Status)
+)
+new_data$Predicted <- predict(model, newdata = new_data, re.form = NA)
+
+library(ggplot2)
+
+ggplot(df_long, aes(x = Domain, y = sqrt(Proportion), colour = Status)) +
+  geom_boxplot(position = position_dodge(0.75)) +
+  geom_line(data = new_data, aes(x = Domain, y = Predicted, group = Status), 
+            , size = 1.2) +
+  geom_point(data = new_data, aes(x = Domain, y = Predicted), 
+            , size = 2)
+
+
+# cells |>
+#   filter(cellsToUse) |>
+#   filter(domain == "region_4") |>
+#   colTest(feature = "cellType", condition = "Status")
 
 # cells |>
 #   filter(cellsToUse) |>
@@ -757,11 +807,11 @@ cells |>
 set.seed(51773)
 
 # Cluster cells into spatial regions with similar composition.
-cells <- lisaClust(
-  cells,
+cellsNiche <- lisaClust(
+  cells,#[, cellsToUse],
   k = 50,
-  Rs = 20,
-  sigma = 50,
+  r = 50,
+  sigma = 20,
   spatialCoords = c("m.cx", "m.cy"),
   cellType = "cellType",
   regionName = "niche",
@@ -775,17 +825,39 @@ cells <- lisaClust(
 # Test if the proportion of each region is associated
 # with progression status.
 testNiche <- colTest(
-  cells[, cellsToUse],
+  cellsNiche[, cellsToUse],
   feature = "niche",
-  condition = "Status"
+  condition = "Status"#,
+  #type = "wilcox"
 )
 
 testNiche
 ```
 
 ```{r}
-sort(table(cells[,cells$niche=="region_9"]$cellType))
+sort(table(cellsNiche[,cellsNiche$niche=="region_49"]$cellType))
 ```
+
+
+```{r, fig.height=5, fig.width=5}
+# Visualise the enrichment of each cell type in each region
+regionMap(cells, cellType = "cellType", region = "niche", limit = c(0.2, 10))+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+
+```{r}
+tab <- chisq.test(table(cellsNiche$cellType, cellsNiche$niche))$res
+
+use = rownames(testNiche)[1:10]
+
+tab["T_cell_CD8",use]
+
+sort(tab[,"region_49"])
+
+```
+
+
 
 # What if we hadn't clustered down to CD8 T cells?
 
@@ -797,7 +869,6 @@ cells$cellTypeMergeTcells <- cells |>
   colData() |>
   as.data.frame() |>
   mutate(cellTypeMergeTcells = factor(case_when(
-      cellType == "T_cell_dn" ~ "T_cell",
       cellType == "T_cell_CD8" ~ "T_cell",
       cellType == "T_cell_CD4" ~ "T_cell",
       # cellType == "CK_low_tumour" ~ "Tumour",
@@ -806,23 +877,6 @@ cells$cellTypeMergeTcells <- cells |>
       TRUE ~ cellType
   ))) |> 
   pull(cellTypeMergeTcells) 
-  
-
-
-
-cells$cellTypeMergeTumour <- cells |>
-  colData() |>
-  as.data.frame() |>
-  mutate(cellTypeMergeTumour = factor(case_when(
-      # cellType == "T_cell_dn" ~ "T_cell",
-      # cellType == "T_cell_CD8" ~ "T_cell",
-      # cellType == "T_cell_CD4" ~ "T_cell",
-      cellType == "CK_low_tumour" ~ "Tumour",
-      cellType == "Luminal" ~ "Tumour",
-      cellType == "Basal" ~ "Tumour",
-      TRUE ~ cellType
-  ))) |> 
-  pull(cellTypeMergeTumour) 
   
 ```
 
@@ -851,11 +905,11 @@ stateChangesTcells <- calcStateChanges(
   cells,
   assay = "norm",
   cellType = "cellTypeMergeTcells",
-  type = "abundancesTcells",
+  type = "distancesTcells",
   minCells = 5)
 
 
-stateMatTcells <- prepMatrix(stateChangesTcells, replaceVal = NA, column = "tval")
+stateMatTcells <- prepMatrix(stateChangesTcells, replaceVal = NA, column = "coef")
 
 stateMatTcells[stateMatTcells==Inf] <- NA
 stateMatTcells <- stateMatTcells[,colMeans(is.na(stateMatTcells[rownames(prop),]))<0.4]
@@ -863,19 +917,44 @@ stateMatTcells <- stateMatTcells[,colMeans(is.na(stateMatTcells[rownames(prop),]
 
 stateResultsTcells <- colTest(stateMatTcells[rownames(prop), ], droplevels(clinical[rownames(prop), "Status"]))
 
-stateResultsTcells[grep("T_cell__CK_low_tumour", stateResultsTcells$cluster),]
+stateResultsTcells
 
-boxplot(stateMatTcells[rownames(prop), "T_cell__CK_low_tumour__ECAD"]~ droplevels(clinical[rownames(prop), "Status"]))
+stateResultsTcells[grep("CD8", stateResultsTcells$cluster),]
+
+
+stateResultsTcells[grep("T_cell__Tumour__CD8", stateResultsTcells$cluster),]
+
+boxplot(stateMatTcells[rownames(prop), "T_cell__Tumour__CD8"]~ droplevels(clinical[rownames(prop), "Status"]))
+abline(h = 0)
 
 ```
+
+
+
+```{r}
+
+use <- cellsToUse & cells$cellTypeMergeTcells=="T_cell"
+
+x <- reducedDim(cells, "distancesTcells")[use,"Tumour"]
+
+y <- assay(cells,"norm")["CD8",use]
+
+plot(x,y)
+
+```
+
+
+
+
+
 
 
 ```{r}
 
 data.frame(colData(cells),reducedDim(cells, "abundancesTcells"), t(assay(cells,  "norm")))|>
   
-  filter(cellTypeMergeTcells %in% "T_cell", imageID %in% rownames(prop), !is.na(CK_low_tumour)) |>
-  mutate(bin = factor(cut(CK_low_tumour,c(0,2,4,6,8,10,100),right = FALSE)))|>
+  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
+  mutate(bin = factor(cut(Tumour,c(0,2,4,6,8,10,100),right = FALSE)))|>
   group_by(imageID,bin,Status) |>
   summarise(gene = mean(CD8)) |>
   #mutate(gene = CD8) |> ungroup()|>
@@ -887,8 +966,8 @@ data.frame(colData(cells),reducedDim(cells, "abundancesTcells"), t(assay(cells, 
 
 data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
   
-  filter(cellTypeMergeTcells %in% "T_cell", imageID %in% rownames(prop), !is.na(CK_low_tumour)) |>
-  mutate(bin = factor(cut(CK_low_tumour,c(0,50,100,150,200,300,400),right = FALSE))) |>
+  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
+  mutate(bin = factor(cut(Tumour,c(0,50,100,150,200,1000),right = FALSE))) |>
   filter(!is.na(bin))|>
   group_by(imageID,bin , Status) |>
   summarise(gene = mean(CD8)) |>
@@ -899,14 +978,45 @@ data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "
 
 ```
 
+```{r}
+
+data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
+  
+  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
+  mutate(bin = factor(cut(Tumour,
+                          #seq(0,200,25),
+                          c(0,50,1000),
+                          #c(0,50,100,150,200,1000),
+                          right = FALSE))) |>
+  filter(!is.na(bin))|>
+  group_by(bin , Status) |>
+  summarise(gene = (CD8)) |>
+  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_violin(alpha = 0.5) + 
+    geom_jitter(aes(color = Status), 
+              position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9), 
+              size = 2, alpha = 0.7) + geom_smooth(aes(as.numeric(bin), gene, colour = Status),method = "lm", se = FALSE) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+
+```{r}
+data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
+  
+  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
+  
+  ggplot(aes(pmin(Tumour,200), CD8, colour = Status)) + geom_point() + geom_smooth()
+```
+
+
+
 
 ```{r}
 p <- plotStateChanges(
   cells = cells,
-  type = "abundancesTcells",
-  image = "Point2304_pt1089_20677",
+  type = "distancesTcells",
+  image = "Point2312_pt1064_20700",
   from = "T_cell",
-  to = "CK_low_tumour",
+  to = "Tumour",
   marker = "CD8",
   spatialCoords = c("m.cx", "m.cy"),
   assay = "norm",
@@ -923,93 +1033,30 @@ p
 
 
 
-
-## Tumour
-
-```{r}
-
-cells <- getDistances(cells,
-  cellType = "cellTypeMergeTumour",
-  spatialCoords = c("m.cx", "m.cy"),
-  redDimName = "distancesTumour"
-)
-
-cells <- getAbundances(cells,
-  r = 100,
-  cellType = "cellTypeMergeTumour",
-  spatialCoords = c("m.cx", "m.cy"),
-  redDimName = "abundancesTumour",
-)
-
-stateChangesTumour <- calcStateChanges(
-  cells,
-  assay = "norm",
-  cellType = "cellTypeMergeTumour",
-  type = "abundancesTumour",
-  minCells = 5)
-
-
-stateMatTumour <- prepMatrix(stateChangesTumour, replaceVal = NA, column = "tval")
-
-stateMatTumour[stateMatTumour==Inf] <- NA
-stateMatTumour <- stateMatTumour[,colMeans(is.na(stateMatTumour[rownames(prop),]))<0.4]
-
-
-stateResultsTumour <- colTest(stateMatTumour[rownames(prop), ], droplevels(clinical[rownames(prop), "Status"]))
-
-stateResultsTumour[grep("Tumour__T_cell_CD8", stateResultsTumour$cluster),]
-
-boxplot(stateMatTumour[rownames(prop), "Tumour__T_cell_CD8__ECAD"]~ droplevels(clinical[rownames(prop), "Status"]))
-
-```
-
-
-```{r}
-
-data <- data.frame(colData(cells),reducedDim(cells, "abundancesTumour"), t(assay(cells,  "norm")))
-
-data |>
-  filter(cellTypeMergeTumour %in% "Tumour", imageID %in% rownames(prop), !is.na(T_cell_CD8)) |>
-      mutate(bin = factor(cut(T_cell_CD8,c(0,2,4,6,8,10,15,20,30,100),right = FALSE))) |>
-  group_by(imageID,bin,Status) |>
-  summarise(gene = mean(ECAD)) |>
-  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_boxplot()
-
-
-data <- data.frame(colData(cells),reducedDim(cells, "distancesTumour"), t(assay(cells, "norm")))
-
-data |>
-  filter(cellTypeMergeTumour %in% "Tumour", imageID %in% rownames(prop), !is.na(T_cell_CD8)) |>
-mutate(bin = factor(cut(T_cell_CD8, c(0,20,50,100,150,200,300,400),right = FALSE))) |>
-  group_by(imageID,bin,Status) |>
-  summarise(gene = mean(ECAD)) |>
-  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_boxplot()
-
-```
-
 # Gene in cell in region
 
 ```{r}
 
 data <- data.frame(colData(cells),t(assay(cells,  "norm")))|>
   filter(imageID %in% rownames(prop), cellTypeMergeTcells=="T_cell") |>
-  group_by(imageID, region, Status) |>
+  group_by(imageID, domain, Status) |>
   summarise(gene = mean(CD8))
 
 test = NULL
-for(i in unique(data$region)){
-test[[i]] <- t.test(gene~Status, data[data$region==i,])
+for(i in unique(data$domain)){
+test[[i]] <- t.test(gene~Status, data[data$domain==i,])
 } 
 
 data.frame(colData(cells),t(assay(cells,  "norm")))|>
   filter(imageID %in% rownames(prop), cellTypeMergeTcells=="T_cell") |>
-  group_by(imageID, region, Status) |>
+  group_by(imageID, domain, Status) |>
   summarise(gene = mean(CD8)) |>
-  ggplot(aes(y=gene,x=region, colour = Status))+
+  ggplot(aes(y=gene,x=domain, colour = Status))+
   geom_boxplot()
   
+test
 
-cells$typeRegion <- paste(cells$cellTypeMergeTcells, cells$region, sep = "__")
+cells$typeRegion <- paste(cells$cellTypeMergeTcells, cells$domain, sep = "__")
 
 data <- scFeatures(assay(cells, "norm"), 
                    feature_types = c("gene_mean_celltype"),
@@ -1020,7 +1067,7 @@ testTypeRegion <- colTest(data[["gene_mean_celltype"]][rownames(prop),], as.char
 testTypeRegion
 testTypeRegion[grep("T_cell",rownames(testTypeRegion)),]
 
-boxplot(data[["gene_mean_celltype"]][rownames(prop),"T_cell__region_4--CD8"]~as.character(clinical[rownames(prop), "Status"]))
+boxplot(data[["gene_mean_celltype"]][rownames(prop),"T_cell__region_1--CD8"]~as.character(clinical[rownames(prop), "Status"]))
 
 
 ```
