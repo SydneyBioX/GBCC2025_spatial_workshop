@@ -1,12 +1,12 @@
-Package: scdneySpatialBiocAsia2024
-Title: Unlocking single cell spatial omics analyses with scdney
+Package: GBCCspatialWorkshop2024
+Title: Making Space Count: Strategies for Analysing Spatial Omics Data
 Version: 2.0.1
 Authors@R: 
     c(person(given = "Farhan", family = "Ameen", role = c("aut", "cre"), email = "farhan.ameen@sydney.edu.au"),
       person(given = "Alex", family = "Qin", email = "alex.qin@sydney.edu.au", role = c("aut")),
       person(given = "Shreya", family = "Rao", email = "shreya.rao@sydney.edu.au", role = c("aut")),
       person(given = "Ellis", family = "Patrick", role = c("aut"), email = "ellis.patrick@sydney.edu.au"))
-Description: This workshop introduces an analysitical framwork for analysisng data from high dimensional spatial omics technologies, 
+Description: This workshop introduces an analytical framwork for analysisng data from high dimensional spatial omics technologies, 
     using functionality from packages developed by the Sydney Precision Data Science Center. 
 License: MIT + file LICENSE
 Encoding: UTF-8
