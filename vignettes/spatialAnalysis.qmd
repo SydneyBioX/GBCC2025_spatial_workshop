@@ -57,6 +57,7 @@ suppressPackageStartupMessages({
   library(treekoR)
   library(Statial)
   library(scFeatures)
+  library(lme4)
 })
 ```
 
@@ -75,6 +76,7 @@ library(tidySpatialExperiment)
 library(treekoR)
 library(Statial)
 library(scFeatures)
+library(lme4)
 ```
 
 
@@ -107,36 +109,12 @@ if (use_mc) {
 }
 
 theme_set(theme_classic())
+cat("Number of cores being used: ", nCores, "\n")
 ```
 
 # Context
 
 In this workshop, we will analyse some MIBI-TOF data [(Risom et al, 2022)](https://www.sciencedirect.com/science/article/pii/S0092867421014860?via%3Dihub#!) profiling the spatial landscape of ductal carcinoma in situ (DCIS), which is a pre-invasive lesion that is thought to be a precursor to invasive breast cancer (IBC). The key conclusion of this manuscript (amongst others) is that spatial information about cells can be used to predict disease progression in patients. 
-
-
-# Read in images
-
-The images are stored in the `images` folder within the `data` folder in the form of single-channel TIFF images. In single-channel images, each pixel represents intensity values for a single marker. Here, we use the `loadImages` function from the `cytomapper` package to load all the TIFF images into a `CytoImageList` object and store the images as h5 file on-disk.
-
-
-```{r load images}
-pathToImages <- system.file("extdata/images", package = "spicyWorkflow")
-
-# approx. runtime: 40 secs
-images <- cytomapper::loadImages(
-  pathToImages,
-  single_channel = TRUE, # one image per channel
-  on_disk = TRUE, # on-disk loading to save RAM
-  h5FilesPath = HDF5Array::getHDF5DumpDir(),
-  BPPARAM = BPPARAM,
-  as.is = TRUE
-)
-
-# free unused memory
-gc()
-```
-
-
 
 # Load the clinical data
 
@@ -159,20 +137,58 @@ clinical <- clinical |>
     "Point", PointNumber, "_pt", Patient_ID, "_", TMAD_Patient
   ))
 
-# find rows where Tissue_Type is "normal" and append "_Normal" to their imageID
-image_idx <- grep("normal", clinical$Tissue_Type)
-clinical$imageID[image_idx] <- paste0(clinical$imageID[image_idx], "_Normal")
-
 # clinical variables of interest
 clinicalVariables <- c(
   "imageID", "Patient_ID", "Status", "Age", "SUBTYPE", "PAM50", "Treatment",
   "DCIS_grade", "Necrosis"
 )
 
+# find rows where Tissue_Type is "normal" and append "_Normal" to their imageID
+image_idx <- grep("normal", clinical$Tissue_Type)
+clinical$imageID[image_idx] <- paste0(clinical$imageID[image_idx], "_Normal")
+
 clinical$Status <- factor(clinical$Status)
 rownames(clinical) <- clinical$imageID
 ```
 
+# Filter to LumB
+
+To keep the case study computationally efficient, we are going to only going to analyse patients with Luminal B breast cancer.
+
+```{r}
+# images associated with LumB subtype
+lumBImages <- clinical |>
+  filter(PAM50 == "LumB") |>
+  pull(imageID)
+```
+
+# Read in images
+
+The images are stored in the `images` folder in the form of single-channel TIFF images. In single-channel images, each pixel represents intensity values for a single marker. Here, we use the `loadImages` function from the `cytomapper` package to load all the TIFF images into a `CytoImageList` object and store the images as h5 file on-disk.
+
+
+```{r load images}
+pathToImages <- system.file("extdata/images", package = "spicyWorkflow")
+
+# approx. runtime with 5 cores: 50 secs
+images <- cytomapper::loadImages(
+  pathToImages,
+  single_channel = TRUE, # one image per channel
+  on_disk = TRUE, # on-disk loading to save RAM
+  h5FilesPath = HDF5Array::getHDF5DumpDir(),
+  BPPARAM = BPPARAM,
+  as.is = TRUE
+)
+
+# free unused memory
+gc()
+
+# filter images to Lumb samples
+images <- images[lumBImages]
+
+# filter clinical data to LumB samples
+clinical <- clinical |> filter(PAM50 == "LumB") 
+```
 
 ## Put the clinical data into the colData of CytoImageList
 
@@ -191,13 +207,13 @@ Next, we can perform our segmentation. The [simpleSeg](https://www.bioconductor.
 
 ```{r segment}
 # Generate segmentation masks
-# approx. runtime: 10.3 mins
+# approx. runtime with 5 cores: 1.5 mins
 masks <- simpleSeg(
   images,
   nucleus = c("HH3"), # trace out nuclei using the HH3 marker
   cellBody = "dilate", # use dilation strategy of segmentation
   transform = c("tissueMask","sqrt"), # remove background noise outside of sample area and perform sqrt transform
-  sizeSelection = 20, # only cells > 20 pixels will be used
+  sizeSelection = 20, # only cells > 20 pixels will be included
   discSize = 5, # dilate out from nucleus by 5 pixels
   cores = nCores
 )
@@ -249,7 +265,7 @@ In order to characterise the phenotypes of each of the segmented cells, `measure
 
 ```{r}
 # Summarise the expression of each marker in each cell
-# approx. runtime: 5 mins
+# approx. runtime with 5 cores: 50 secs
 cells <- cytomapper::measureObjects(
   masks,
   images,
@@ -259,9 +275,10 @@ cells <- cytomapper::measureObjects(
   BPPARAM = BPPARAM
 )
 
-cells <- cells |> filter(!imageID %in% c('Point6103_pt1008_20624', 'Point6203_pt1107_31568', 'Point6206_pt1197_31571', 'Point6201_pt1027_20597'))
+cells$x = cells$m.cx
+cells$y = cells$m.cy
+cells
 ```
-
 
 
 # How can we make marker quantification comparable across images?
@@ -368,7 +385,7 @@ useMarkers <- c(
 
 ```
 
-Here, we perform clustering with the `runFuseSOM` function from the [FuseSOM](https://www.bioconductor.org/packages/release/bioc/html/FuseSOM.html) package, using the same subset of markers as the original manuscript for cell type gating. The number of clusters is set to `numClusters = 16`.
+Here, we perform clustering with the `runFuseSOM` function from the [FuseSOM](https://www.bioconductor.org/packages/release/bioc/html/FuseSOM.html) package, using the same subset of markers as the original manuscript for cell type gating. The number of clusters is set to `numClusters = 12`.
 
 ```{r}
 # Set seed.
@@ -381,7 +398,7 @@ cells <- runFuseSOM(
   cells,
   markers = useMarkers,
   assay = "norm",
-  numClusters = 16
+  numClusters = 12
 )
 
 cells$cellType <- cells$clusters
@@ -432,27 +449,22 @@ We can then annotate the clusters based on the canonical cell type markers they 
 
 ```{r}
 # annotate cell populations
-
 cells$cellType <- cells |>
   colData() |>
   as.data.frame() |>
   mutate(cellType = factor(case_when(
       clusters == "cluster_1" ~ "Tumour",
-      clusters == "cluster_2" ~ "T_cell_CD4",
-      clusters == "cluster_3" ~ "T_cell_CD8",
-      clusters == "cluster_4" ~ "Granulocytes",
-      clusters == "cluster_5" ~ "B_cells",
-      clusters == "cluster_6" ~ "DC",
-      clusters == "cluster_7" ~ "Myoepithilial",
-      clusters == "cluster_8" ~ "Monocyte",
-      clusters == "cluster_9" ~ "OtherImmune",
-      clusters == "cluster_10" ~ "Fibroblast",
-      clusters == "cluster_11" ~ "OtherImmune",
-      clusters == "cluster_12" ~ "Macrophage",
-      clusters == "cluster_13" ~ "Endothelial",
-      clusters == "cluster_14" ~ "Mast",
-      clusters == "cluster_15" ~ "Endothelial",
-      clusters == "cluster_16" ~ "Myoepithilial",
+      clusters == "cluster_2" ~ "Endothelial",
+      clusters == "cluster_3" ~ "Myoepithelial",
+      clusters == "cluster_4" ~ "Monocyte",
+      clusters == "cluster_5" ~ "DC",
+      clusters == "cluster_6" ~ "Macrophage",
+      clusters == "cluster_7" ~ "T_cell_CD4",
+      clusters == "cluster_8" ~ "T_cell_CD8",
+      clusters == "cluster_9" ~ "Mast",
+      clusters == "cluster_10" ~ "B_cell",
+      clusters == "cluster_11" ~ "Other_immune",
+      clusters == "cluster_12" ~ "Fibroblast",
       TRUE ~ clusters
   ))) |> 
   pull(cellType) 
@@ -479,31 +491,27 @@ We can plot the cell types on an image to view their spatial distribution.
 reducedDim(cells, "spatialCoords") <- cbind(x = cells$m.cx, y = cells$m.cy)
 
 cells |> 
-  #filter(imageID == "Point2203_pt1072_31606") |> 
-  filter(imageID == "Point2206_pt1116_31620") |>
+  filter(imageID == "Point2203_pt1072_31606") |>
   plotReducedDim("spatialCoords", colour_by = "cellType")
 
 ```
 
-In the heatmap above, E-cadherin (ECAD) is not significantly highly expressed in any cluster. We can visualise its expression across different cell types, as seen in the plot below. ECAD is typically strongly expressed in tumour epithelial cells, so we would expect to see high ECAD expression in the `Tumour` cell population if the clustering and annotation have been successful.
-
 
 ```{r fig.width = 12, fig.height = 4}
-
 cells |> 
   join_features(features = c("ECAD"), assay = "norm", shape = "wide") |>
   ggplot(aes(x = cellType, y = ECAD)) + geom_boxplot()
-
 ```
 
 
 ## Dimension reduction
 
-As our data is stored in a `SingleCellExperiment` object, we can visualise our data in a lower dimension and look for image-level batch effects with a UMAP.
+As our data is stored in a `SingleCellExperiment` object, we can visualise our data in a lower dimension to see how well we can distinguish our annotated cell populations.
 
 ```{r}
 set.seed(51773)
-# Perform dimension reduction using UMP.
+# Perform dimension reduction using UMAP.
+# approx. runtime with 5 cores: 12 secs
 cells <- scater::runUMAP(
   cells,
   subset_row = useMarkers,
@@ -518,8 +526,16 @@ someImages <- unique(colData(cells)$imageID)[c(1, 10, 20, 40, 50, 60)]
 scater::plotReducedDim(
   cells[, colData(cells)$imageID %in% someImages],
   dimred = "UMAP",
-  colour_by = "clusters"
+  colour_by = "cellType"
 )
+```
+
+Lastly, we will also subset our samples down to progressors and non-progressors.
+
+```{r}
+cells <- cells[, cells$Status %in% c("nonprogressor", "progressor")]
+cells$Status <- droplevels(cells$Status) # drop unused levels
+levels(cells$Status) <- c("nonprogressor", "progressor") # refactor levels
 ```
 
 
@@ -528,13 +544,8 @@ scater::plotReducedDim(
 We recommend using a package such as `diffcyt` for testing for changes in abundance of cell types. However, the `colTest` function from the `spicyR` package allows us to quickly test for associations between the proportions of cell types and progression status using either Wilcoxon rank sum tests or t-tests. 
 
 ```{r}
-# Select cells which belong to individuals with progressor status
-# Filter for Luminal B cancer subtype
-cellsToUse <- cells$Status %in% c("nonprogressor","progressor") &
-  cells$PAM50 == "LumB" & !is.na(cells$PAM50)
-
 # Perform simple wicoxon rank sum tests on the columns of the proportion matrix.
-testProp <- colTest(cells[, cellsToUse],
+testProp <- colTest(cells,
   condition = "Status",
   feature = "cellType"
 )
@@ -543,40 +554,13 @@ testProp
 ```
 
 ```{r}
-# Select images corresponding to individuals with known progressor status
-imagesToUse <- rownames(clinical)[clinical[, "Status"] %in% c("nonprogressor", "progressor")]
-
 # Calculate cell type proportions using selected cells
-prop <- getProp(cells[, cellsToUse], feature = "cellType")
+prop <- getProp(cells, feature = "cellType")
 
-# Identify the most significant cell type from test results
-clusterToUse <- rownames(testProp)[1]
-
-# Visualise the distribution of that cell type across clinical status groups
+# Visualise the distribution of CD8 T cells
+clusterToUse <- rownames(testProp)[4]
 boxplot(
-  prop[imagesToUse, clusterToUse] ~ droplevels(clinical[imagesToUse, "Status"]),
-  main = paste("Proportion of", clusterToUse, "by Clinical Status"),
-  xlab = "Clinical Status",
-  ylab = "Cell Type Proportion",
-)
-
-```
-
-We can see that B cells are generally more abundant in progressors compared to non-progressors.
-
-We can also view proportions for a specific cell type of interest, such as CD8 T cells.
-
-
-```{r}
-# Select images corresponding to individuals with known progressor status
-imagesToUse <- rownames(clinical)[clinical[, "Status"] %in% c("nonprogressor", "progressor")]
-
-# Calculate cell type proportions using selected cells
-prop <- getProp(cells[, cellsToUse], feature = "cellType")
-
-# Visualise the distribution of CD8 T cells across clinical status groups
-boxplot(
-  prop[imagesToUse, "T_cell_CD8"] ~ droplevels(clinical[imagesToUse, "Status"]),
+  prop[, clusterToUse] ~ droplevels(clinical[, "Status"]),
   main = paste("Proportion of", clusterToUse, "by Clinical Status"),
   xlab = "Clinical Status",
   ylab = "Cell Type Proportion",
@@ -598,20 +582,20 @@ We can use the `spicy` function from the `spicyR` package to evaluate all pairwi
 # Test for changes in pair-wise spatial relationships between cell types.
 
 spicyTest <- spicy(
-  cells[, cellsToUse], # Select for progressors and non-progressors only
+  cells,
   condition = "Status", # the clinical outcome of interest
   cellType = "cellType",
   imageID = "imageID",
-  spatialCoords = c("m.cx","m.cy"),
+  spatialCoords = c("x", "y"),
   r = 50, # evaluate spatial relationships at 50 pixels
   sigma = 20, # account for tissue inhomogeneity
   cores = nCores
 )
 
-topPairs(spicyTest, n = 20)
+topPairs(spicyTest, n = 50)
 ```
 
-The most significant cell type interaction is ``
+One of our most significant cell type interactions is `Tumour__T_cell_CD8` with a positive coefficient, which suggests that there is increased localisation between CD8 T cells and tumour cells in progressors vs non-progressors.
 
 ::: {.callout-tip title="Choosing parameters for spicy"}
 **How do we select an optimal value for `r`?**
@@ -622,7 +606,7 @@ The most significant cell type interaction is ``
 :::
 
 
-We can visualise these tests using `signifPlot` where we observe that cell type pairs appear to become less attractive (or avoid more) in the progression sample.
+We can visualise these tests using `signifPlot`, where we observe that cell type pairs appear to become less attractive (or avoid more) in progression samples.
 
 ```{r}
 # Visualise which relationships are changing the most.
@@ -632,12 +616,53 @@ signifPlot(
 )
 ```
 
-## Add in nearest neighbours approach
-
-# Are tumour cells closer to CD8 t cells than other t cells in progressors?
+We can use the `spicyBoxPlot` function to visualise the relationship between a pair of cell types in more detail. 
 
 ```{r}
+spicyBoxPlot(spicyTest,
+             from = "T_cell_CD8",
+             to = "Tumour")
+```
 
+In the plot above, we can see that CD8 T cells are more localised with tumour cells in progressors compared to non-progressors.
+
+We can use the `plotImage` function to visualise the spatial relationship between two cell types in a single image. First, we will combine our calculated L-function with the `Status` of the sample.
+
+```{r}
+data.frame(imageID = spicyTest$imageIDs, 
+           L_func = spicyTest$pairwiseAssoc$T_cell_CD8__Tumour,
+           condition = spicyTest$condition)
+```
+
+Then, we can use `plotImage` and specify the image ID to plot. Below, we've plotted `Point6102_pt1019_20648`, a progression sample, where we can see CD8 T cells infiltrating tumours.
+
+```{r}
+plotImage(cells,
+          imageToPlot = "Point6102_pt1019_20648",
+          from = "T_cell_CD8",
+          spatialCoords = c("x", "y"),
+          to = "Tumour")
+```
+
+In contrast, when we plot a non-progression sample (`Point2203_pt1072_31606`), we can see that CD8 T cells show minimal infiltration into the tumours compared to the progression samples.
+
+```{r}
+plotImage(cells,
+          imageToPlot = "Point2203_pt1072_31606",
+          from = "T_cell_CD8",
+          spatialCoords = c("x", "y"),
+          to = "Tumour")
+```
+
+<!--## Add in nearest neighbours approach -->
+
+# Are tumour cells closer to CD8 T cells than other T cells in progressors?
+
+When assessing whether tumour cells are closer to CD8 T cells than to other T cells in progressors, it's important to maintain context by comparing these distances relative to other immune cell populations. Using other T cells or immune cells as the reference context helps account for differences in local immune density and ensures that observed proximity reflects specific spatial preferences rather than general immune infiltration.
+
+We can define a cell type hierarchy based on our biological understanding of these cell types.
+
+```{r}
 set.seed(51773)
 # Calculate hierarchy using treekoR
 # clusterTree <- treekoR::getClusterTree(t(assay(cells, "norm")[useMarkers[useMarkers!="CD45"],]),
@@ -650,46 +675,59 @@ set.seed(51773)
 # # Convert treekoR result to a name list of parents and children.
 # treekorParents = getParentPhylo(clusterTree)
 
-treekorParents <- list(T_cell = c("T_cell_CD8", "T_cell_CD4"), Immune = c("B_cells", "T_cell_CD8", "T_cell_CD4", "Granulocytes", "OtherImmune", "Mast", "Macrophage", "Monocyte", "DC"))
+treekorParents <- list(T_cell = c("T_cell_CD8", "T_cell_CD4"), Immune = c("B_cell", "T_cell_CD8", "T_cell_CD4",
+                                                                          "Other_immune", "Mast", "Macrophage", "Monocyte", "DC"))
 
 #treekorParents <- list(T_cell = c("cluster_2", "cluster_3"), Immune = c("cluster_2","cluster_3","cluster_4","cluster_5","cluster_6","cluster_8", "cluster_9","cluster_11", "cluster_13"))
+```
 
+Then, we can create a dataframe containing all pairwise combinations using the `parentCombinations` function. 
 
-
+```{r}
 parentDf <- parentCombinations(
   all = as.character(unique(cells$cellType)),
   parentList = treekorParents
 )
+```
 
+We can then use the `Kontextual` function to evaluate co-localisation between pairs of cell types with respect to a parent population. 
+
+```{r}
 #cells$cellTypeChar <- as.character(cells$cellType)
 
 kontextualResult <- Kontextual(
-  cells = cells[, cellsToUse],
+  cells = cells,
   parentDf = parentDf,
   r = 100,
   cellType = "cellType",
-  spatialCoords = c("m.cx","m.cy"),
+  spatialCoords = c("x","y"),
   cores = nCores
 )
 
+head(kontextualResult)
 ```
-
-
-
+For every pairwise relationship (named accordingly: `from__to__parent`) `Kontextual` outputs the L-function values (original) and the `Kontextual` value. The relationships where the L-function and `Kontextual` disagree (e.g. one metric is positive and the other is negative) represent relationships where adding context information results in different conclusions on the spatial relationship between the two cell types.
 
 ```{r}
-
+# convert from dataframe to wide matrix for integration
 kontextMat <- prepMatrix(kontextualResult)
 
+# perform a t-test to check for differences in the Kontextual metric across progressors vs non-progressors
 kontextResults <- colTest(kontextMat[rownames(prop), ], as.character(clinical[rownames(prop), "Status"]))
-
 head(kontextResults)
 ```
 
+One of the results that pops up is `Tumour__T_cell_CD8__Immune`, which is the relationship between tumour cells and CD8 T cells relative to the parent population of all immune cells. We can see that CD8 T cells are comparatively more localised with tumour cells. 
 
 # Are there any broad spatial domains associated with progression?
 
-## Tweak settings a bit
+Beyond pairwise spatial relationships between cell types, imaging datasets reveal richer layers of tissue organisation through concepts like niches, neighborhoods, microenvironments, and spatial domains. Niches typically describe the immediate surroundings of a specific cell, while spatial domains represent larger tissue compartments formed by coordinated cell arrangements. 
+
+The interpretation of spatial domains is highly context-dependent. In cancer research, domain analysis might highlight the distribution of tumor and immune compartments or reveal how domain composition correlates with disease progression. We will first attempt to identify larger spatial domains and determine whether the compositio of these domains varies with progression status.
+
+<!-- ## Tweak settings a bit-->
+
+The [lisaClust](https://www.bioconductor.org/packages/release/bioc/html/lisaClust.html) package can be used to calculate the L-function metric over a range of radii, called Local Indicators of Spatial Association, or LISA curves. We can then perform k-means clustering on these LISA curves to obtain spatial domains. Below, we've specified `k = 2` to identify two domains.
 
 ```{r}
 set.seed(51773)
@@ -697,15 +735,17 @@ set.seed(51773)
 # Cluster cells into spatial regions with similar composition.
 cells <- lisaClust(
   cells,
-  k = 4,
-  r = c(20,50,100),
+  k = 2,
+  Rs = c(50, 100),
   sigma = 20,
-  spatialCoords = c("m.cx", "m.cy"),
+  spatialCoords = c("x", "y"),
   cellType = "cellType",
   regionName = "domain",
   cores = nCores
 )
 ```
+
+These domains are stored within `colData` and can be extracted.
 
 ## Region - cell type enrichment heatmap
 
@@ -713,9 +753,17 @@ We can try to interpret which spatial orderings the regions are quantifying usin
 
 ```{r, fig.height=5, fig.width=5}
 # Visualise the enrichment of each cell type in each region
-regionMap(cells, cellType = "cellType", region = "domain", limit = c(0.2, 5))+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+regionMap(cells, cellType = "cellType", region = "domain", limit = c(0.2, 5)) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
 
+Above, we can see that most immune cells are concentrated in `region_1`. We can further segregate these cells by increasing the number of clusters.
+
+The choice of k depends largely on the biological question being asked. For instance, if we are interested in understanding the interactions between immune cells in a tumor microenvironment, the number of clusters should reflect the known biological subtypes of immune cells, such as T cells, B cells, macrophages, etc. In this case, a larger value of k may be needed to capture the diversity within these immune cell populations.
+
+On the other hand, if the focus is on interactions between immune cells and tumor cells, we might choose a smaller value of k to group immune cells into broader categories like we have done here.
+
+Additionally, methods like the Gap statistic, Jump statistic, or Silhouette score could be employed to determine an optimal value of k.
 
 ## Visualise regions
 
@@ -726,14 +774,12 @@ We can quickly examine the spatial arrangement of the spatial domains using `ggp
 # Extract cell information and filter to specific image.
 df <- colData(cells) |>
   as.data.frame() |>
-  filter(imageID == "Point2206_pt1116_31620")
- #filter(imageID == "Point2203_pt1072_31606")
+  filter(imageID == "Point6102_pt1019_20648")
 
 # Colour cells by their region.
 ggplot(df, aes(x = m.cx, y = m.cy, colour = domain)) +
   geom_point()
 ```
-
 
 While much slower, we have also implemented a function for overlaying the region information as a hatching pattern so that the information can be viewed simultaneously with the cell type calls.
 
@@ -741,13 +787,14 @@ While much slower, we have also implemented a function for overlaying the region
 # Use hatching to visualise regions and cell types.
 hatchingPlot(
   cells,
-  useImages = "Point2206_pt1116_31620",
+  useImages = "Point6102_pt1019_20648",
   cellType = "cellType",
   region = "domain",
-  spatialCoords = c("m.cx", "m.cy")
+  spatialCoords = c("x", "y")
 )
 ```
 
+In the plot above, we can see that `region_2` captures our tumour regions, while `region_1` captures the non-tumour regions. 
 
 <!-- This plot is a ggplot object and so the scale can be modified with `scale_region_manual`.  -->
 
@@ -779,12 +826,11 @@ hatchingPlot(
 
 If needed, we can again quickly use the `colTest` function to test for associations between the proportions of the cells in each domain and progression status using either Wilcoxon rank sum tests or t-tests. 
 
-
 ```{r}
 # Test if the proportion of each region is associated
 # with progression status.
 testRegion <- colTest(
-  cells[, cellsToUse],
+  cells,
   feature = "domain",
   condition = "Status"
 )
@@ -794,109 +840,124 @@ testRegion
 
 # Are there any cell type associations with progression that are specific to each domain?
 
+We can use `colTest` to perform Wilcoxon rank-sum tests within each region. For every region, we test whether there is a significant difference in cell type proportions between non-progressors and progressors.
 
-```{r}
+
+```{r warning = F, message = F}
+# Test for region 1 (non-tumour domain)
 cells |>
-  filter(cellsToUse) |>
   filter(domain == "region_1") |>
   colTest(feature = "cellType", condition = "Status", type = "wilcox")
+```
 
+
+```{r warning = F, message = F}
+# Test for region 2 (tumour domain)
 cells |>
-  filter(cellsToUse) |>
   filter(domain == "region_2") |>
   colTest(feature = "cellType", condition = "Status", type = "wilcox")
+```
 
-cells |>
-  filter(cellsToUse) |>
-  filter(domain == "region_3") |>
-  colTest(feature = "cellType", condition = "Status", type = "wilcox")
+Above, we can see that CD8 T cells are differentially abundant in progressors vs non-progressors within tumour domains. 
 
-cells |>
-  filter(cellsToUse) |>
-  filter(domain == "region_4") |>
-  colTest(feature = "cellType", condition = "Status", type = "wilcox")
+We can check if there is an interaction effect between domain and status with mixed effects models. Below, we build one mixed effects model for every cell type with a domain/status interaction effect and include `imageID` as a random effect.
 
 
+```{r warning = F, message = F}
+# Initialize a vector to store p-values from the interaction test
+pval <- c()
 
+# Loop through each unique cell type and test for Domain × Status interaction
+for (ct in unique(cells$cellType)) {
 
-pval = NULL
+  # Construct a data frame of proportions for Domain 1 and Domain 2
+  df <- data.frame(
+    D1 = propD1[rownames(prop), ct],
+    D2 = propD2[rownames(prop), ct],
+    Status = as.character(clinical[rownames(prop), "Status"]),
+    imageID = rownames(prop)
+  )
 
-propD1 <- getProp(cells[,cells$domain=="region_1"])
-propD2 <- getProp(cells[,cells$domain=="region_2"])
-propD3 <- getProp(cells[,cells$domain=="region_3"])
-propD4 <- getProp(cells[,cells$domain=="region_4"])
+  # Pivot data to long format for modeling
+  df_long <- pivot_longer(
+    df,
+    cols = c("D1", "D2"),
+    names_to = "Domain",
+    values_to = "Proportion"
+  )
 
+  # Fit full model with Domain × Status interaction
+  model_full <- lmer(sqrt(Proportion) ~ Domain * Status + (1 | imageID), data = df_long)
 
+  # Fit additive model (no interaction)
+  model_add <- lmer(sqrt(Proportion) ~ Domain + Status + (1 | imageID), data = df_long)
 
-for(ct in unique(cells$cellType)){
-  
-  df <- data.frame(D1 = propD1[rownames(prop),ct], D2 = propD2[rownames(prop),ct], D3 = propD3[rownames(prop),ct], D4 = propD4[rownames(prop),ct], Status = as.character(clinical[rownames(prop), "Status"]), imageID = rownames(prop))
- df_long <- tidyr::pivot_longer(
-  df,
-  cols = c("D1", "D2", "D3", "D4"),
-  names_to = "Domain",
-  values_to = "Proportion"
-)
-  
- model_full <- lmer(sqrt(Proportion) ~ Domain*Status + (1 | imageID), data = df_long)
-  model_add <- lmer(sqrt(Proportion) ~ Domain+Status + (1 | imageID), data = df_long)
+  # Perform likelihood ratio test to assess significance of the interaction term
   an <- anova(model_full, model_add)
+
+  # Store p-value for the interaction term
   pval[ct] <- an$`Pr(>Chisq)`[2]
 }
 
+# Display sorted p-values to find cell types with strongest Domain × Status effects
 sort(pval)
+```
 
-ct <- "T_cell_CD8"
+We can visualise cell type proportions for one cell type of interest `T_cell_CD8` to examine how abundance changes within different domains for progressors vs non-progressors.
 
-  df <- data.frame(D1 = propD1[rownames(prop),ct], D2 = propD2[rownames(prop),ct], D3 = propD3[rownames(prop),ct],D4 = propD4[rownames(prop),ct], Status = as.character(clinical[rownames(prop), "Status"]), imageID = rownames(prop))
- df_long <- tidyr::pivot_longer(
-  df,
-  cols = c("D1", "D2", "D3", "D4"),
-  names_to = "Domain",
-  values_to = "Proportion"
+```{r}
+ct <- "T_cell_CD8"  # Cell type of interest for visualization
+
+# Create a data frame with domain-specific proportions and metadata
+df <- data.frame(
+  D1 = propD1[rownames(prop), ct],  # Proportion of the cell type in domain D1
+  D2 = propD2[rownames(prop), ct],  # Proportion of the cell type in domain D2
+  Status = as.character(clinical[rownames(prop), "Status"]),  # Clinical status of each image
+  imageID = rownames(prop)  # Unique image identifier
 )
 
-model <- lmer(sqrt(Proportion) ~ Domain*Status + (1 | imageID), data = df_long)
+# Reshape data to long format for modeling and plotting
+df_long <- pivot_longer(
+  df,
+  cols = c("D1", "D2"),  # Columns representing domain-specific proportions
+  names_to = "Domain",   # New column indicating the domain (D1 or D2)
+  values_to = "Proportion"  # Corresponding cell type proportion
+)
+
+# Fit a linear mixed-effects model with interaction between Domain and Status
+# Include random intercept for each image to account for repeated measures
+model <- lmer(sqrt(Proportion) ~ Domain * Status + (1 | imageID), data = df_long)
+
+# Create a data frame of combinations for prediction (fixed effects only)
 new_data <- expand.grid(
   Domain = unique(df_long$Domain),
   Status = unique(df_long$Status)
 )
 new_data$Predicted <- predict(model, newdata = new_data, re.form = NA)
 
-library(ggplot2)
-
+# Plot observed data with boxplots, coloured by status
+# Transform proportions using square root for better distribution
 ggplot(df_long, aes(x = Domain, y = sqrt(Proportion), colour = Status)) +
-  geom_boxplot(position = position_dodge(0.75)) +
-  geom_line(data = new_data, aes(x = Domain, y = Predicted, group = Status), 
-            , size = 1.2) +
-  geom_point(data = new_data, aes(x = Domain, y = Predicted), 
-            , size = 2)
+  geom_boxplot()
 
-
-# cells |>
-#   filter(cellsToUse) |>
-#   filter(domain == "region_4") |>
-#   colTest(feature = "cellType", condition = "Status")
-
-# cells |>
-#   filter(cellsToUse) |>
-#   filter(region == "region_5") |>
-#   colTest(feature = "cellType", condition = "Status")  
 ```
 
+From the graph, we can see that the proportion of CD8 T cells in the tumour domain (`D2`) is higher in progressors vs non-progressors. This is a substantial increase compared to the proportion of CD8 T cells in the non-tumour domain (`D1`) in progressors vs non-progressors.
 
 # Are the cell type niches associated with progression?
+
+Another approach is to identify niches, which are defined by the immediate surroundings of a cell, usually within a small k-hop. We can once again use the `lisaClust`, this time definining `k = 50` to identify a large number of niches.
 
 ```{r}
 set.seed(51773)
 
 # Cluster cells into spatial regions with similar composition.
 cellsNiche <- lisaClust(
-  cells,#[, cellsToUse],
-  k = 50,
-  r = 50,
+  cells,
+  k = 50, # identify 50 niches
+  Rs = 50,
   sigma = 20,
-  spatialCoords = c("m.cx", "m.cy"),
+  spatialCoords = c("x", "y"),
   cellType = "cellType",
   regionName = "niche",
   cores = nCores
@@ -909,190 +970,188 @@ cellsNiche <- lisaClust(
 # Test if the proportion of each region is associated
 # with progression status.
 testNiche <- colTest(
-  cellsNiche[, cellsToUse],
+  cellsNiche,
   feature = "niche",
-  condition = "Status"#,
-  #type = "wilcox"
+  condition = "Status",
+  type = "wilcox"
 )
 
 testNiche
 ```
 
+One of the most significant niches we identify is `region_9`. We can examine the composition of niche 9 in more detail below.
+
 ```{r}
-sort(table(cellsNiche[,cellsNiche$niche=="region_49"]$cellType))
+# sort by cell type frequency for niche 9
+sort(table(cellsNiche[,cellsNiche$niche == "region_9"]$cellType))
 ```
 
+We can also use the `regionMap` function to visualise the relative frequency of each cell type in each niche. This also shows us that `region_9` is enriched for CD8 T cells in particular. 
 
-```{r, fig.height=5, fig.width=5}
+```{r, fig.height=5, fig.width=10}
 # Visualise the enrichment of each cell type in each region
-regionMap(cells, cellType = "cellType", region = "niche", limit = c(0.2, 10))+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+regionMap(cellsNiche, cellType = "cellType", region = "niche", limit = c(0.2, 10)) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
 ```
 
-
+We can confirm this with a Chi-squared test and check whether certain cell types are highly enriched in certain niches. We can then use the residuals from the Chi-squared test to identify which cell types are highly enriched in `region_9`.
 
 ```{r}
-tab <- chisq.test(table(cellsNiche$cellType, cellsNiche$niche))$res
-
-use = rownames(testNiche)[1:10]
-
-tab["T_cell_CD8",use]
-
-sort(tab[,"region_49"])
-
+# Perform chi-squared test to evaluate cell type vs. niche association
+chisq.test(table(cellsNiche$cellType, cellsNiche$niche))
 ```
 
+```{r}
+# Extract the standardized residuals from the test result
+residuals_tab <- chisq.test(table(cellsNiche$cellType, cellsNiche$niche))$res
 
+# Define the top 10 cell types to examine from our previous Wilcox test results
+# These are the top 10 niches whose proportion is associated with progression status
+top_niches <- rownames(testNiche)[1:10]
+
+# View standardized residuals for "T_cell_CD8" across the top 10 cell types (likely a typo: should be top niches?)
+residuals_tab["T_cell_CD8", top_niches]
+```
+
+```{r}
+# Sort and view the standardized residuals for all cell types in "region_9" to find strongest over/under-representation
+sort(residuals_tab[ , "region_9"])
+```
+
+CD8 T cells have one of the highest positive residuals, which shows us that this cell type is highly enriched in `region_9`, which we have also proved is associated with progression status. 
 
 # What if we hadn't clustered down to CD8 T cells?
 
+Another approach we can take would be to see whether T cells have higher CD8 expression as they get closer to Tumour cells. To do this, we first combine our CD8 and CD4 T cell populations.
 
 ```{r}
-# Can we use mutate instead?
-
 cells$cellTypeMergeTcells <- cells |>
   colData() |>
   as.data.frame() |>
   mutate(cellTypeMergeTcells = factor(case_when(
       cellType == "T_cell_CD8" ~ "T_cell",
       cellType == "T_cell_CD4" ~ "T_cell",
-      # cellType == "CK_low_tumour" ~ "Tumour",
-      # cellType == "Luminal" ~ "Tumour",
-      # cellType == "Basal" ~ "Tumour",
       TRUE ~ cellType
   ))) |> 
   pull(cellTypeMergeTcells) 
   
 ```
 
-
-
-
-
 # SpatioMark
 
-```{r}
+We can then use our method `SpatioMark`, which detects markers whose expression levels change within a given cell type depending on their spatial context. This allows us to detect context-dependent expression shifts—revealing, for instance, how the presence of neighbouring immune or tumour cells can influence a cell’s functional state. 
 
+The first step in analysing these changes is to calculate the spatial proximity and abundance of each cell to every cell type. `getDistances` calculates the Euclidean distance from each cell to the nearest cell of each cell type. `getAbundances` calculates the K-function value for each cell with respect to each cell type. Both metrics are stored in the `reducedDims` slot of the `SingleCellExperiment` object.
+
+```{r}
+# calculate Euclidean distance from each cell to the nearest cell of each cell type
 cells <- getDistances(cells,
   cellType = "cellTypeMergeTcells",
-  spatialCoords = c("m.cx", "m.cy"),
+  spatialCoords = c("x", "y"),
   redDimName = "distancesTcells"
 )
 
+# calculate K-function value for each cell with respect to a cell type
 cells <- getAbundances(cells,
   r = 50,
   cellType = "cellTypeMergeTcells",
-  spatialCoords = c("m.cx", "m.cy"),
+  spatialCoords = c("x", "y"),
   redDimName = "abundancesTcells",
 )
 
+reducedDimNames(cells)
+```
+
+```{r}
+reducedDim(cells, "distancesTcells") |> head()
+```
+
+```{r}
+reducedDim(cells, "abundancesTcells") |> head()
+```
+
+We can then use the `calcStateChanges` function to examine whether the expression of different markers changes with proximity to a cell type (`distancesTcells`). 
+
+```{r}
 stateChangesTcells <- calcStateChanges(
   cells,
   assay = "norm",
-  cellType = "cellTypeMergeTcells",
-  type = "distancesTcells",
-  minCells = 5)
+  cellType = "cellTypeMergeTcells", # specify the column containing merged T cell types
+  type = "distancesTcells", # define the metric of interest
+  minCells = 5 # minimum number of cells required to fit a model
+)
 
+head(stateChangesTcells)
+```
 
+The output is a dataframe, where each row corresponds to the relationship between a primary and secondary cell type for a specific marker in a specific image. 
+
+```{r}
+# convert stateChangesTcells to a matrix for further analysis
 stateMatTcells <- prepMatrix(stateChangesTcells, replaceVal = NA, column = "coef")
 
-stateMatTcells[stateMatTcells==Inf] <- NA
+# replace anll infinity values with NA
+stateMatTcells[stateMatTcells == Inf] <- NA
+head(stateMatTcells)
+```
+
+The output of this conversion is a dataframe where each column contains the coefficients associated with a specific marker-cell type pair relationship. For instance, in the column `Tumour__DC__PDL1` the first coefficient is `8.62e-05`, which indicates that as tumour cells get closer to dendritic cells `DC` they express higher levels of the marker PDL1 in the image `Point3105_pt1173_31661`.
+
+We can then check whether this metric is significantly associated with progression status using `colTest`.
+
+```{r}
+# drop all columns where more than 40% values are NA (issues with model fit)
 stateMatTcells <- stateMatTcells[,colMeans(is.na(stateMatTcells[rownames(prop),]))<0.4]
 
+# t-test to check for changes across progression status
+stateResultsTcells <- colTest(stateMatTcells[rownames(prop), ], 
+                              droplevels(clinical[rownames(prop), "Status"]))
+head(stateResultsTcells)
+```
 
-stateResultsTcells <- colTest(stateMatTcells[rownames(prop), ], droplevels(clinical[rownames(prop), "Status"]))
 
-stateResultsTcells
-
-stateResultsTcells[grep("CD8", stateResultsTcells$cluster),]
-
-
+```{r}
+# Search for our relationship of interest: CD8 expression in T cells with proximity to Tumour cells
 stateResultsTcells[grep("T_cell__Tumour__CD8", stateResultsTcells$cluster),]
-
-boxplot(stateMatTcells[rownames(prop), "T_cell__Tumour__CD8"]~ droplevels(clinical[rownames(prop), "Status"]))
-abline(h = 0)
-
-```
-
-
-
-```{r}
-
-use <- cellsToUse & cells$cellTypeMergeTcells=="T_cell"
-
-x <- reducedDim(cells, "distancesTcells")[use,"Tumour"]
-
-y <- assay(cells,"norm")["CD8",use]
-
-plot(x,y)
-
-```
-
-
-
-
-
-
-
-```{r}
-
-data.frame(colData(cells),reducedDim(cells, "abundancesTcells"), t(assay(cells,  "norm")))|>
-  
-  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
-  mutate(bin = factor(cut(Tumour,c(0,2,4,6,8,10,100),right = FALSE)))|>
-  group_by(imageID,bin,Status) |>
-  summarise(gene = mean(CD8)) |>
-  #mutate(gene = CD8) |> ungroup()|>
-  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_boxplot(alpha = 0.5)  + 
-    geom_jitter(aes(color = Status), 
-              position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9), 
-              size = 2, alpha = 0.7) + geom_smooth(aes(as.numeric(bin), gene, colour = Status),method = "lm", se = FALSE)
-
-
-data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
-  
-  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
-  mutate(bin = factor(cut(Tumour,c(0,50,100,150,200,1000),right = FALSE))) |>
-  filter(!is.na(bin))|>
-  group_by(imageID,bin , Status) |>
-  summarise(gene = mean(CD8)) |>
-  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_boxplot(alpha = 0.5) + 
-    geom_jitter(aes(color = Status), 
-              position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9), 
-              size = 2, alpha = 0.7) + geom_smooth(aes(as.numeric(bin), gene, colour = Status),method = "lm", se = FALSE)
-
 ```
 
 ```{r}
+# Extract the feature of interest for matched samples
+feature_values <- stateMatTcells[rownames(prop), "T_cell__Tumour__CD8"]
 
-data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
-  
-  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
-  mutate(bin = factor(cut(Tumour,
-                          #seq(0,200,25),
-                          c(0,50,1000),
-                          #c(0,50,100,150,200,1000),
-                          right = FALSE))) |>
-  filter(!is.na(bin))|>
-  group_by(bin , Status) |>
-  summarise(gene = (CD8)) |>
-  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_violin(alpha = 0.5) + 
-    geom_jitter(aes(color = Status), 
-              position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9), 
-              size = 2, alpha = 0.7) + geom_smooth(aes(as.numeric(bin), gene, colour = Status),method = "lm", se = FALSE) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+# Get the clinical status for the same samples, dropping unused factor levels
+status <- droplevels(clinical[rownames(prop), "Status"])
 
+# Create a boxplot of the feature stratified by clinical status
+boxplot(feature_values ~ status,
+        main = "CD8 T cell - Tumour Interactions by Clinical Status",
+        ylab = "Interaction Score",
+        xlab = "Status")
+
+# Add a horizontal reference line at 0
+abline(h = 0, lty = 2, col = "gray40")
 ```
 
+From the boxplot above, we can see that the coefficient is positive for non-progressors, indicating that CD8 expression in T cells increases as distance from Tumour cells increases. On the other hand, the coefficient for progressors is negative, indicating that CD8 expression in T cells increases as the distance to tumour cells decreases.
 
 ```{r}
-data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
-  
-  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
-  
-  ggplot(aes(pmin(Tumour,200), CD8, colour = Status)) + geom_point() + geom_smooth()
+# Subset: Select only T cells
+is_tcell <- cells$cellTypeMergeTcells == "T_cell"
+
+# Extract x-values: Distance to tumour for T cells from the "distancesTcells" reduced dimension
+x <- reducedDim(cells, "distancesTcells")[is_tcell, "Tumour"]
+
+# Extract y-values: Normalized CD8 expression for the same T cells
+y <- assay(cells, "norm")["CD8", is_tcell]
+
+# Scatter plot: CD8 expression vs. distance to tumour
+plot(x, y,
+     xlab = "Distance to Tumour",
+     ylab = "CD8 Expression (normalized)",
+     main = "CD8 Expression vs. Distance to Tumour in T Cells",
+     pch = 16)
+
 ```
-
-
-
 
 ```{r}
 p <- plotStateChanges(
@@ -1111,10 +1170,59 @@ p <- plotStateChanges(
   plotModelFit = TRUE,
   method = "lm")
 
-p
+# p
+p$image
 ```
 
 
+<!--data.frame(colData(cells),reducedDim(cells, "abundancesTcells"), t(assay(cells,  "norm")))|>
+  filter(cellTypeMergeTcells %in% "T_cell", cells, !is.na(Tumour)) |>
+  mutate(bin = factor(cut(Tumour,c(0,2,4,6,8,10,100),right = FALSE)))|>
+  group_by(imageID,bin,Status) |>
+  summarise(gene = mean(CD8)) |>
+  #mutate(gene = CD8) |> ungroup()|>
+  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_boxplot(alpha = 0.5)  + 
+    geom_jitter(aes(color = Status), 
+              position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9), 
+              size = 2, alpha = 0.7) + geom_smooth(aes(as.numeric(bin), gene, colour = Status),method = "lm", se = FALSE)
+
+
+data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
+  
+  filter(cellTypeMergeTcells %in% "T_cell", cells, !is.na(Tumour)) |>
+  mutate(bin = factor(cut(Tumour,c(0,50,100,150,200,1000),right = FALSE))) |>
+  filter(!is.na(bin))|>
+  group_by(imageID,bin , Status) |>
+  summarise(gene = mean(CD8)) |>
+  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_boxplot(alpha = 0.5) + 
+    geom_jitter(aes(color = Status), 
+              position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9), 
+              size = 2, alpha = 0.7) + geom_smooth(aes(as.numeric(bin), gene, colour = Status),method = "lm", se = FALSE)
+
+data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
+  
+  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
+  mutate(bin = factor(cut(Tumour,
+                          #seq(0,200,25),
+                          c(0,50,1000),
+                          #c(0,50,100,150,200,1000),
+                          right = FALSE))) |>
+  filter(!is.na(bin))|>
+  group_by(bin , Status) |>
+  summarise(gene = (CD8)) |>
+  ggplot(aes(x = bin, y = gene, fill = Status)) + geom_violin(alpha = 0.5) + 
+    geom_jitter(aes(color = Status), 
+              position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9), 
+              size = 2, alpha = 0.7) + geom_smooth(aes(as.numeric(bin), gene, colour = Status),method = "lm", se = FALSE) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) -->
+
+
+<!--
+data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "norm"))) |>
+  
+  filter(cellTypeMergeTcells %in% "T_cell", cellsToUse, !is.na(Tumour)) |>
+  
+  ggplot(aes(pmin(Tumour,200), CD8, colour = Status)) + geom_point() + geom_smooth()
+-->
 
 
 # Gene in cell in region
