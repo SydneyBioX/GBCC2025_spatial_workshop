@@ -867,6 +867,9 @@ We can check if there is an interaction effect between domain and status with mi
 # Initialize a vector to store p-values from the interaction test
 pval <- c()
 
+propD1 <- getProp(cells[,cells$domain=="region_1"])
+propD2 <- getProp(cells[,cells$domain=="region_2"])
+
 # Loop through each unique cell type and test for Domain × Status interaction
 for (ct in unique(cells$cellType)) {
 
@@ -1092,7 +1095,7 @@ stateMatTcells <- prepMatrix(stateChangesTcells, replaceVal = NA, column = "coef
 
 # replace anll infinity values with NA
 stateMatTcells[stateMatTcells == Inf] <- NA
-head(stateMatTcells)
+stateMatTcells[1:5, 1:5]
 ```
 
 The output of this conversion is a dataframe where each column contains the coefficients associated with a specific marker-cell type pair relationship. For instance, in the column `Tumour__DC__PDL1` the first coefficient is `8.62e-05`, which indicates that as tumour cells get closer to dendritic cells `DC` they express higher levels of the marker PDL1 in the image `Point3105_pt1173_31661`.
@@ -1152,6 +1155,7 @@ plot(x, y,
      pch = 16)
 
 ```
+The `plotStateChanges` function can be used to visualise this relationship in the original images. Below, we can see that CD8 expression increases in T cells that are closer to the tumour. 
 
 ```{r}
 p <- plotStateChanges(
@@ -1227,10 +1231,13 @@ data.frame(colData(cells),reducedDim(cells, "distancesTcells"), t(assay(cells, "
 
 # Gene in cell in region
 
-```{r}
+Another approach we can take is to examine the expression of CD8 in the broad spatial domains we identified earlier. We would expect to see CD8 expression to be higher in the tumour domain (`D2`) compared to the non-tumour domain (`D1`). 
 
+
+
+```{r}
 data <- data.frame(colData(cells),t(assay(cells,  "norm")))|>
-  filter(imageID %in% rownames(prop), cellTypeMergeTcells=="T_cell") |>
+  filter(imageID %in% rownames(prop), cellTypeMergeTcells == "T_cell") |>
   group_by(imageID, domain, Status) |>
   summarise(gene = mean(CD8))
 
