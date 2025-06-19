@@ -1216,7 +1216,7 @@ Classification models play a central role in spatial omics by identifying featur
 
 However, due to biological heterogeneity, not all features are informative across all individuals. To address this, robust modelling frameworks must accommodate complex, subgroup-specific signals. This ensures that models not only perform well statistically but also yield biologically and clinically meaningful insights. [ClassifyR](https://www.bioconductor.org/packages/release/bioc/html/ClassifyR.html) provides such a framework, offering tools for feature selection, repeated cross-validation, performance evaluation, survival analysis, and integration across multiple data types. It is designed to rigorously assess which features predict outcomes, and for which subgroups, thereby enhancing both discovery and translational potential.
 
-We will first create a list to store three metrics: cell type proportions, pairwise cell type co-localisation (`spicyR`), and proportions of cells within each domain (`lisaClust`).
+We will first create a list to store some of the metrics that we have quantified: cell type proportions, pairwise cell type co-localisation (`spicyR`), and proportions of cells within each domain or niche (`lisaClust`), marker changes associated with domains or cell type proximity (`Statial`). If you are interested in experimenting, we provide a range of other spatial feature sets in our [scFeatures](https://www.bioconductor.org/packages/release/bioc/html/scFeatures.html) package.
 
 ```{r message=FALSE, warning=FALSE}
 # Create list to store data.frames
@@ -1288,7 +1288,7 @@ cv <- crossValidate(
   outcome = outcome, # outcome vector
   classifier = "GLM", 
   nFolds = 5,
-  nRepeats = 100,
+  nRepeats = 10,
   nCores = nCores
 )
 ```
@@ -1309,10 +1309,7 @@ performancePlot(
 The `samplesMetricMap` function allows visual comparison of sample-wise error rates or accuracy measures from the cross-validation process, helping to identify which samples are consistently well-classified and which are not.
 
 ```{r}
-samplesMetricMap(cv,  
-                 classColours = c("#3F48CC", "#880015"),
-                 metricColours = list(c("#FFFFFF", "#CFD1F2", "#9FA3E5", "#6F75D8", "#3F48CC"),
-                                      c("#FFFFFF", "#E1BFC4", "#C37F8A", "#A53F4F", "#880015")))
+samplesMetricMap(cv)
 ```
 
 # sessionInfo
