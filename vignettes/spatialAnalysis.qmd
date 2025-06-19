@@ -39,6 +39,7 @@ library(BiocStyle)
 
 ```{r load libraries, echo=FALSE, results="hide", warning=FALSE}
 suppressPackageStartupMessages({
+  library(tidyverse)
   library(cytomapper)
   library(dplyr)
   library(ggplot2)
@@ -55,6 +56,7 @@ suppressPackageStartupMessages({
   library(scFeatures)
   library(lme4)
   library(knitr)
+  library(gridExtra)
 })
 ```
 
@@ -515,7 +517,7 @@ prop <- getProp(cells, feature = "cellType")
 # Visualise the distribution of CD8 T cells
 boxplot(
   prop[, "T_cell_CD8"] ~ droplevels(clinical[, "Status"]),
-  main = paste("Proportion of", clusterToUse, "by Clinical Status"),
+  main = paste("Proportion of T_cell_CD8 by Clinical Status"),
   xlab = "Clinical Status",
   ylab = "Cell Type Proportion",
 )
@@ -551,7 +553,7 @@ spicyTest <- spicy(
   cores = nCores
 )
 
-topPairs(spicyTest, n = 50)
+topPairs(spicyTest, n = 10)
 ```
 
 One of our most significant cell type interactions is `Tumour__T_cell_CD8` with a positive coefficient, which suggests that there is increased localisation between CD8 T cells and tumour cells in progressors vs non-progressors.
@@ -1201,19 +1203,19 @@ p <- plotStateChanges(
 p$image
 ```
 
-# Gene in cell in region
+# Marker expression within domains
 
 Another approach we can take is to examine the expression of CD8 in the broad spatial domains we identified earlier. We would expect CD8 expression to be higher for progressors vs non-progressions within the tumour domain (`region_2`). 
 
 ```{r}
 # Load and prepare data: combine cell metadata with normalized gene expression
 # Filter for T cells only, and subset to images used in the main analysis
-data <- data.frame(colData(cells), t(assay(cells, "norm"))) |>
+geneDomains <- data.frame(colData(cells), t(assay(cells, "norm"))) |>
   filter(imageID %in% rownames(prop), cellTypeMergeTcells == "T_cell") |>
   group_by(imageID, domain, Status) |>
   summarise(CD8_avg_exp = mean(CD8), .groups = "drop")
 
-head(data)
+geneDomains
 ```
 
 Next, we'll perform a t-test to check for differences in CD8 expression for each domain between progressors vs non-progressors.
@@ -1221,24 +1223,78 @@ Next, we'll perform a t-test to check for differences in CD8 expression for each
 ```{r}
 # t-test for region_1 (non-tumour domain)
 t.test(CD8_avg_exp ~ Status, 
-       data = data |> filter(domain == "region_1"))
+       data = geneDomains |> filter(domain == "region_1"))
 ```
 
 ```{r}
 # t-test for region_2 (tumour domain)
 t.test(CD8_avg_exp ~ Status, 
-       data = data |> filter(domain == "region_2"))
+       data = geneDomains |> filter(domain == "region_2"))
 ```
 
 From the test results above, we can see that the average CD8 expression in the tumour domain (`region_2` is higher in progressors compared to non-progressors. In the non-tumour domain (`region_1`), CD8 expression between progressors and non-progressors is similar.
 
 ```{r}
 # Visualise CD8 expression by domain and status using boxplots
-data |> 
+geneDomains |> 
   ggplot(aes(y = CD8_avg_exp, x = domain, colour = Status)) +
   geom_boxplot() +
   labs(title = "CD8 Expression in T Cells by Domain and Status", y = "Mean CD8 Expression", x = "Domain")
 ```
+
+# Marker expression across cell types in each domain
+
+We can add another layer of information by looking at average marker expression within cell types in each domain. The `getMarkerMeans` function from the `Statial` package can be used to obtain the average expression of each marker within each cell type and domain.
+
+```{r}
+genesCellDomains <- getMarkerMeans(cells,
+                                   imageID = "imageID",
+                                   cellType = "cellTypeMergeTcells",
+                                   region = "domain")
+
+head(genesCellDomains)
+```
+
+We can then perform t-tests on our columns of interest, which would be `CD8__T_cell__region_2`, i.e., expression of CD8 in T cells in the tumour domain. First, we'll incorporate tumour progression status into the dataset above.
+
+```{r}
+genesCellDomains$imageID <- rownames(genesCellDomains)
+status <- colData(cells) |> as.data.frame() |> distinct(imageID, Status)
+genesCellDomains <- inner_join(genesCellDomains, status, by = "imageID")
+
+t.test(`CD8__T_cell__region_2` ~ Status, data = genesCellDomains)
+```
+
+For comparison, we can repeat the test above for the non-tumour domain.
+
+```{r}
+t.test(`CD8__T_cell__region_1` ~ Status, data = genesCellDomains)
+```
+
+```{r}
+# pivot to long format
+genes_long <- genesCellDomains |>
+  pivot_longer(
+    cols = -c(imageID, Status),
+    names_to = "feature",
+    values_to = "expression"
+  )
+
+# Split feature into marker, cell type, domain
+genes_long <- genes_long |>
+  separate(feature, into = c("marker", "celltype", "domain"), sep = "__")
+
+# Filter to just CD8 and T_cell
+genes_plot <- genes_long |>
+  filter(marker == "CD8", celltype == "T_cell")
+
+# Plot everything in one plot, colored by domain
+ggplot(genes_plot, aes(x = domain, y = expression, colour = Status)) +
+  geom_boxplot(position = position_dodge(width = 0.8)) +
+  labs(y = "Average CD8 expression", title = "CD8 in T cells across domains")
+
+```
+
 
 # Can we use these spatial metrics to predict patient outcomes?
 
@@ -1253,22 +1309,49 @@ We will first create a list to store three metrics: cell type proportions, pairw
 data <- list()
 
 # Add proportions of each cell type in each image
-data[["props"]] <- getProp(cells, "cellType") 
+data[["props"]] <- getProp(cells, "cellType")
 
-# Add pair-wise associations(l-function metric used in spicyR)
-# approx. runtime: 15 secs
-data[["dist"]] <- getPairwise(
-  cells, 
-  spatialCoords = c("x", "y"), 
-  cellType = "cellType", 
-  Rs = c(20, 50, 100),
-  sigma = 50,
+# Add pair-wise associations
+data[["pairwise"]] <- getPairwise(
+  cells,
+  spatialCoords = c("x", "y"),
+  cellType = "cellType",
+  Rs = c(50, 100),
+  sigma = 20,
   cores = nCores
-) |> as.data.frame()
+)
+
+data[["pairwise"]] <- as.data.frame(data[["pairwise"]])
+
+# replace NA values with mean 
+data[["pairwise"]] <- apply(data[["pairwise"]] , 2, function(x){
+  x[is.na(x)] <- mean(x, na.rm = TRUE)
+  x
+})
+
+# Add proportions of cells in domains/niches in each image
+data[["domain"]] <- getProp(cells, "domain")
+data[["niche"]] <- getProp(cells, "niche")
+
+# Add average marker expression in a domain
+data[["genesDomains"]] <- getMarkerMeans(cells,
+                                         imageID = "imageID",
+                                         region = "domain")
 
 
-# Add proportions of each region in each image (lisaClust)
-data[["regions"]] <- getProp(cells, "niche")
+# Add average marker expression per cell type in a domain
+data[["genesCellsDomains"]] <- getMarkerMeans(cells,
+                                         imageID = "imageID",
+                                         cellType = "cellTypeMergeTcells",
+                                         region = "domain")
+
+
+
+# Add marker expression vs proximity to cell type (spatioMark)
+data[["spatioMark"]] <- stateMatTcells
+data[["spatioMark"]][is.na(data[["spatioMark"]])] = 0
+
+measurements <- lapply(data, function(x) x[rownames(prop), ])
 ```
 
 We will also create an outcome vector which represents the predictions to be made. 
@@ -1285,7 +1368,7 @@ outcome
 set.seed(51773)
 
 # Perform cross-validation of an elastic net model with 100 repeats of 5-fold cross-validation
-# approx. runtime: 20 seconds
+# approx. runtime: 2 mins
 cv <- crossValidate(
   measurements = data, # list of dataframes containing our metrics of interest
   outcome = outcome, # outcome vector
@@ -1305,7 +1388,8 @@ performancePlot(
   cv,
   metric = "AUC",
   characteristicsList = list(x = "Assay Name")
-)
+) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
 The `samplesMetricMap` function allows visual comparison of sample-wise error rates or accuracy measures from the cross-validation process, helping to identify which samples are consistently well-classified and which are not.
