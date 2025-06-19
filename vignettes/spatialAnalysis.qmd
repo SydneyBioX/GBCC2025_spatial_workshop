@@ -440,7 +440,7 @@ It’s always helpful to examine the number of cells in each cluster, as this pr
 # Check cluster frequencies.
 colData(cells) |>
   as.data.frame() |>
-  count(cellType, sort = TRUE) |>
+  dplyr::count(cellType, sort = TRUE) |>
   knitr::kable()
 ```
 
@@ -1004,7 +1004,7 @@ One of the most significant niches we identify is `region_9`. We can examine the
 colData(cells) |>
   as.data.frame() |>
   filter(niche == "region_9") |>
-  count(cellType, sort = TRUE) |>
+  dplyr::count(cellType, sort = TRUE) |>
   knitr::kable()
 ```
 
