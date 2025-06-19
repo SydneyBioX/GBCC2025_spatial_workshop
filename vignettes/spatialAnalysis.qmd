@@ -690,7 +690,7 @@ parentDf <- parentCombinations(
 head(parentDf)
 ```
 
-We can then use the `Kontextual` function to evaluate co-localisation between pairs of cell types with respect to a parent population. In this case, we are calculating the `Kontextual` metric over a radius of `r = 100`.
+We can then use the `Kontextual` function to evaluate co-localisation between pairs of cell types with respect to a parent population. In this case, we are calculating the `Kontextual` metric over a radius of 100.
 
 ```{r}
 kontextualResult <- Kontextual(
