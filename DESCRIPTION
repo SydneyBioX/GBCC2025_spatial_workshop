@@ -2,9 +2,7 @@ Package: GBCCspatialWorkshop2025
 Title: Making Space Count: Strategies for Analysing Spatial Omics Data
 Version: 1.0.0
 Authors@R: 
-    c(person(given = "Farhan", family = "Ameen", role = c("aut", "cre"), email = "farhan.ameen@sydney.edu.au"),
-      person(given = "Alex", family = "Qin", email = "alex.qin@sydney.edu.au", role = c("aut")),
-      person(given = "Shreya", family = "Rao", email = "shreya.rajeshrao@sydney.edu.au", role = c("aut")),
+    c(person(given = "Shreya", family = "Rao", email = "shreya.rajeshrao@sydney.edu.au", role = c("cre","aut")),
       person(given = "Ellis", family = "Patrick", role = c("aut"), email = "ellis.patrick@sydney.edu.au"))
 Description: This workshop introduces an analytical framwork for analysing data from high dimensional spatial omics technologies, 
     using functionality from packages developed by the Sydney Precision Data Science Center. 
@@ -24,16 +22,20 @@ Depends:
     Statial,
     ClassifyR,
     tidySingleCellExperiment,
+    tidySpatialExperiment,
     tidyverse,
     SingleCellExperiment,
     cytomapper,
     scater,
     glmnet,
     knitr,
-    lme4
+    lme4,
+    imcRtools,
+    scFeatures
 Suggests: 
     rmarkdown,
-    pkgdown
+    pkgdown,
+    quarto
 URL: https://sydneybiox.github.io/GBCC2025_spatial_workshop/
 BugReports: https://github.com/SydneyBioX/GBCC2025_spatial_workshop/issues/new
 VignetteBuilder: knitr

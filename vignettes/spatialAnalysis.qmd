@@ -92,7 +92,7 @@ To link image features with disease progression, we need to import the clinical 
 clinical <- read.csv(
   system.file(
     "extdata/1-s2.0-S0092867421014860-mmc1.csv",
-    package = "spicyWorkflow"
+    package = "GBCC2025_spatial_workshop"
   )
 )
 
@@ -132,7 +132,7 @@ lumBImages <- clinical |>
 The images are stored in the `images` folder in the form of single-channel TIFF images. In single-channel images, each pixel represents intensity values for a single marker. Here, we use the `loadImages` function from the `cytomapper` package to load all the TIFF images into a `CytoImageList` object and store the images as h5 file on-disk.
 
 ```{r}
-pathToImages <- system.file("extdata/images", package = "spicyWorkflow")
+pathToImages <- system.file("extdata/images", package = "GBCC2025_spatial_workshop")
 
 # approx. runtime: 3 min
 system.time({images <- cytomapper::loadImages(
