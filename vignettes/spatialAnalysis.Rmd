@@ -1286,7 +1286,7 @@ measurements <- lapply(data, function(x) x[rownames(prop), ])
 We will also create an outcome vector which represents the predictions to be made.
 
 ```{r}
-outcome <- cells[rownames(prop),]$Status
+outcome <- clinical[rownames(prop),]$Status
 outcome
 ```
 
@@ -1332,6 +1332,3 @@ samplesMetricMap(cv)
 ```{r}
 sessionInfo()
 ```
-
-::: :::::
-:::
