@@ -383,7 +383,7 @@ We can assess the suitability of our choice of 12 clusters using the `estimateNu
 As we can be seen below, we chose the second elbow point as the optimal number of clusters.
 
 ```{r}
-cells <- estimateNumCluster(cells, kSeq = 2:30)
+cells <- estimateNumCluster(cells, kSeq = 2:30) 
 optiPlot(cells, method = "gap")
 ```
 
