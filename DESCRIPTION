@@ -14,6 +14,7 @@ RoxygenNote: 7.3.2
 Depends: 
     R (>= 3.5.0),
     Biobase,
+    BiocStyle,
     SpatialDatasets,
     simpleSeg,
     FuseSOM,
@@ -34,8 +35,7 @@ Depends:
     scFeatures
 Suggests: 
     rmarkdown,
-    pkgdown,
-    quarto
+    pkgdown
 URL: https://sydneybiox.github.io/GBCC2025_spatial_workshop/
 BugReports: https://github.com/SydneyBioX/GBCC2025_spatial_workshop/issues/new
 VignetteBuilder: knitr
