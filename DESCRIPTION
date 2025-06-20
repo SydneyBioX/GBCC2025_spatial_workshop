@@ -40,7 +40,7 @@ URL: https://sydneybiox.github.io/GBCC2025_spatial_workshop/
 BugReports: https://github.com/SydneyBioX/GBCC2025_spatial_workshop/issues/new
 VignetteBuilder: knitr
 DockerImage: ghcr.io/sydneybiox/gbcc2025_spatial_workshop:latest
-Remotes: SydneyBioX/Statial, ellispatrick/spicyR, SydneyBioX/simpleSeg, ellispatrick/lisaClust
+Remotes: SydneyBioX/Statial, SydneyBioX/spicyR, SydneyBioX/simpleSeg, SydneyBioX/lisaClust
 
 
 
