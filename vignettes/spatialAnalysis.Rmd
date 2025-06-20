@@ -27,6 +27,16 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 library(BiocStyle)
 ```
 
+```{=html}
+<style>
+.callout-tip {
+  padding: 1em;
+  background: lightgrey;
+}
+</style>
+```
+
+
 # Version Info
 
 <p>
