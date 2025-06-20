@@ -1120,7 +1120,7 @@ stateMatTcells <- stateMatTcells[,colMeans(is.na(stateMatTcells[rownames(prop),]
 
 # t-test to check for changes across progression status
 stateResultsTcells <- colTest(stateMatTcells[rownames(prop), ], 
-                              droplevels(clinical[rownames(prop), "Status"]))
+                              clinical[rownames(prop), "Status"])
 head(stateResultsTcells)
 ```
 
