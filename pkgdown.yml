@@ -3,7 +3,7 @@ pkgdown: 2.1.3
 pkgdown_sha: ~
 articles:
   spatialAnalysis: spatialAnalysis.html
-last_built: 2025-06-20T12:53Z
+last_built: 2025-06-21T05:23Z
 urls:
   reference: https://sydneybiox.github.io/GBCC2025_spatial_workshop/reference
   article: https://sydneybiox.github.io/GBCC2025_spatial_workshop/articles
