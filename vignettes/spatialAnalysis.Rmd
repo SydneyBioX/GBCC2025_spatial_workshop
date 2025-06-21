@@ -150,14 +150,14 @@ The images are stored in the `images` folder in the form of single-channel TIFF 
 pathToImages <- "../inst/extdata/images" #system.file("extdata/images", package = "GBCCspatialWorkshop2025")
 
 # approx. runtime: 3 min
-system.time({images <- cytomapper::loadImages(
+images <- cytomapper::loadImages(
   pathToImages,
   single_channel = TRUE, # one image per channel
   on_disk = TRUE, # on-disk loading to save RAM
   h5FilesPath = HDF5Array::getHDF5DumpDir(),
   BPPARAM = BPPARAM,
   as.is = TRUE
-)})
+)
 
 # free unused memory
 gc()
@@ -1110,7 +1110,7 @@ stateMatTcells[stateMatTcells == Inf] <- NA
 stateMatTcells[1:5, 1:5]
 ```
 
-The output of this conversion is a dataframe where each column contains the coefficients associated with a specific marker-cell type pair relationship. For instance, in the column `Tumour__DC__PDL1` the first coefficient is `8.62e-05`, which indicates that as tumour cells get closer to dendritic cells `DC` they express higher levels of the marker PDL1 in the image `Point3105_pt1173_31661`.
+The output of this conversion is a dataframe where each column contains the coefficients associated with a specific marker-cell type pair relationship. For instance, in the column `Tumour__DC__PDL1` the first coefficient is `8.62e-05`, which indicates that as tumour cells get closer to dendritic cells `DC` they express lower levels of the marker PDL1 in the image `Point3105_pt1173_31661`.
 
 We can then check whether this metric is significantly associated with progression status using `colTest`.
 
@@ -1182,7 +1182,7 @@ genesCellDomains <- getMarkerMeans(cells,
                                    region = "domain",
                                    assay = "norm")
 
-head(genesCellDomains)
+genesCellDomains[1:4,1:4]
 ```
 
 We can then perform t-tests on our columns of interest, which would be `CD8__T_cell__region_2`, i.e., expression of CD8 in T cells in the tumour domain. First, we'll incorporate tumour progression status into the dataset above.
@@ -1301,7 +1301,7 @@ set.seed(51773)
 cv <- crossValidate(
   measurements = data, # list of dataframes containing our metrics of interest
   outcome = outcome, # outcome vector
-  classifier = "GLM", 
+  classifier = "randomForest",
   nFolds = 5,
   nRepeats = 10,
   nCores = nCores

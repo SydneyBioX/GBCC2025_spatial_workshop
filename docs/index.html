@@ -5,14 +5,14 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>ScdneySpatial • scdneySpatialBiocAsia2024</title>
+<title>Spatial Omics Analysis with Bioconductor • GBCCspatialWorkshop2025</title>
 <script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="deps/bootstrap-5.3.1/bootstrap.min.css" rel="stylesheet">
-<script src="deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.4.2/css/all.min.css" rel="stylesheet">
-<link href="deps/font-awesome-6.4.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="ScdneySpatial">
-<meta name="description" content="This workshop introduces an analysitical framwork for analysisng data from high dimensional spatial omics technologies, using functionality from packages developed by the Sydney Precision Data Science Center.">
-<meta property="og:description" content="This workshop introduces an analysitical framwork for analysisng data from high dimensional spatial omics technologies, using functionality from packages developed by the Sydney Precision Data Science Center.">
+<script src="deps/bootstrap-5.3.1/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
+<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="Spatial Omics Analysis with Bioconductor">
+<meta name="description" content="This workshop introduces an analytical framwork for analysing data from high dimensional spatial omics technologies, using functionality from packages developed by the Sydney Precision Data Science Center.">
+<meta property="og:description" content="This workshop introduces an analytical framwork for analysing data from high dimensional spatial omics technologies, using functionality from packages developed by the Sydney Precision Data Science Center.">
 </head>
 <body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
@@ -20,9 +20,9 @@
 
     <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
 
-    <a class="navbar-brand me-2" href="index.html">scdneySpatialBiocAsia2024</a>
+    <a class="navbar-brand me-2" href="index.html">GBCCspatialWorkshop2025</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">2.0.1</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -35,12 +35,12 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="articles/scdneySpatial.html">Unlocking single cell spatial omics analyses with scdney</a></li>
+<li><a class="dropdown-item" href="articles/spatialAnalysis.html">Making Space Count: Strategies for Analysing Spatial Omics Data</a></li>
   </ul>
 </li>
       </ul>
 <ul class="navbar-nav">
-<li class="nav-item"><a class="external-link nav-link" href="https://github.com/SydneyBioX/scdneySpatial_BiocAsia2024"><span class="fa fa-github"></span></a></li>
+<li class="nav-item"><a class="external-link nav-link" href="https://github.com/SydneyBioX/GBCC2025_spatial_workshop"><span class="fa fa-github"></span></a></li>
       </ul>
 </div>
 
@@ -57,7 +57,7 @@
 <div class="section level2">
 <h2 id="description">Description<a class="anchor" aria-label="anchor" href="#description"></a>
 </h2>
-<p>In this tutorial we will introduce an analytical framework for analysing data from high dimensional spatial omics technologies such as, CODEX, CycIF, IMC and High Definition Spatial Transcriptomics. This framework makes use of functionality from our Bioconductor packages simpleSeg, FuseSOM, spicyR, listClust, Statial and ClassifyR. By the end of this tutorial attendees will be able to implement and assess some of the key steps of a spatial analysis pipeline including cell segmentation, feature normalisation, cell type identification, microenvironment and cell-state characterisation, spatial hypothesis testing and patient classification. Understanding these key steps will provide attendees with the core skills needed to interrogate the comprehensive spatial information generated by these exciting new technologies.</p>
+<p>In this tutorial we will introduce some core analytical concepts that are needed to extract insights from high dimensional spatial omics technologies such as, CODEX, CycIF, IMC and High Definition Spatial Transcriptomics. To illustrate these concepts we will makes use of functionality from our Bioconductor packages simpleSeg, FuseSOM, spicyR, listClust, Statial and ClassifyR. By the end of this tutorial attendees will be able to implement and assess some of the key steps of a typical spatial analysis pipeline including cell segmentation, feature normalisation, cell type identification, microenvironment and cell-state characterisation, spatial hypothesis testing and patient classification. Understanding these key steps will provide attendees with the core skills needed to interrogate the comprehensive spatial information generated by these exciting new technologies.</p>
 <div class="section level3">
 <h3 id="pre-requisites">Pre-requisites<a class="anchor" aria-label="anchor" href="#pre-requisites"></a>
 </h3>
@@ -73,26 +73,26 @@
 </h3>
 <p>The expected timing of the workshop:</p>
 <table class="table">
-<thead><tr class="header">
+<thead><tr>
 <th>Activity</th>
 <th>Time</th>
 </tr></thead>
 <tbody>
-<tr class="odd">
+<tr>
 <td>Data visualisation &amp; cell segmentation</td>
 <td>20m</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Cell type clustering &amp; classification</td>
 <td>20m</td>
 </tr>
-<tr class="odd">
+<tr>
 <td>Spatial analysis &amp; feature generation</td>
 <td>40m</td>
 </tr>
-<tr class="even">
+<tr>
 <td>Patient Classification</td>
-<td>20m</td>
+<td>10m</td>
 </tr>
 </tbody>
 </table>
@@ -115,8 +115,8 @@
   </main><aside class="col-md-3"><div class="links">
 <h2 data-toc-skip>Links</h2>
 <ul class="list-unstyled">
-<li><a href="https://github.com/SydneyBioX/scdneySpatial_BiocAsia2024/" class="external-link">Browse source code</a></li>
-<li><a href="https://github.com/SydneyBioX/scdneySpatial_BiocAsia2024/issues/new/choose" class="external-link">Report a bug</a></li>
+<li><a href="https://github.com/SydneyBioX/GBCC2025_spatial_workshop/" class="external-link">Browse source code</a></li>
+<li><a href="https://github.com/SydneyBioX/GBCC2025_spatial_workshop/issues/new" class="external-link">Report a bug</a></li>
 </ul>
 </div>
 
@@ -132,17 +132,15 @@
 <div class="citation">
 <h2 data-toc-skip>Citation</h2>
 <ul class="list-unstyled">
-<li><a href="authors.html#citation">Citing scdneySpatialBiocAsia2024</a></li>
+<li><a href="authors.html#citation">Citing GBCCspatialWorkshop2025</a></li>
 </ul>
 </div>
 
 <div class="developers">
 <h2 data-toc-skip>Developers</h2>
 <ul class="list-unstyled">
-<li>Farhan Ameen <br><small class="roles"> Author, maintainer </small>  </li>
-<li>Alex Qin <br><small class="roles"> Author </small>  </li>
-<li>Shreya Rao <br><small class="roles"> Author </small>  </li>
-<li>Ellis Patrick <br><small class="roles"> Author </small>  </li>
+<li>Shreya Rao <br><small class="roles"> Maintainer, author </small>   </li>
+<li>Ellis Patrick <br><small class="roles"> Author </small>   </li>
 </ul>
 </div>
 
@@ -153,11 +151,11 @@
 
 
     <footer><div class="pkgdown-footer-left">
-  <p>Developed by Farhan Ameen, Alex Qin, Shreya Rao, Ellis Patrick.</p>
+  <p>Developed by Shreya Rao, Ellis Patrick.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.1.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.1.3.</p>
 </div>
 
     </footer>
