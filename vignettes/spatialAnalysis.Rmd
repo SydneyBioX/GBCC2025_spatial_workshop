@@ -36,7 +36,6 @@ library(BiocStyle)
 </style>
 ```
 
-
 # Version Info
 
 <p>
@@ -102,11 +101,6 @@ To link image features with disease progression, we need to import the clinical 
 
 clinicalFile <- "../inst/extdata/1-s2.0-S0092867421014860-mmc1.csv"
 
-# clinicalFile <-   system.file(
-#     "extdata/1-s2.0-S0092867421014860-mmc1.csv",
-#     package = "GBCCspatialWorkshop2025"
-#   )
-
 clinical <- read.csv(
  clinicalFile
 )
@@ -147,7 +141,7 @@ lumBImages <- clinical |>
 The images are stored in the `images` folder in the form of single-channel TIFF images. In single-channel images, each pixel represents intensity values for a single marker. Here, we use the `loadImages` function from the `cytomapper` package to load all the TIFF images into a `CytoImageList` object and store the images as h5 file on-disk.
 
 ```{r}
-pathToImages <- "../inst/extdata/images" #system.file("extdata/images", package = "GBCCspatialWorkshop2025")
+pathToImages <- "../inst/extdata/images" 
 
 # approx. runtime: 3 min
 images <- cytomapper::loadImages(
@@ -220,7 +214,7 @@ To assess segmentation accuracy, we can overlay the nuclei masks onto the corres
 cytomapper::plotPixels(
   image = images[1],
   mask = masks[1],
-  img_id = "imageID",
+  img_id = "imageID", 
   colour_by = c("PanKRT", "HH3", "CD3", "CD20"),
   display = "single",
   colour = list(
@@ -265,7 +259,7 @@ cells
 
 # How can we make marker quantification comparable across images?
 
-Variability in marker intensity across images is a common challenge in spatial imaging, often driven by technical factors like staining efficiency, imaging conditions, or sample preparation. These inconsistencies can blur the distinction between marker-positive and -negative cells, leading to misclassification and unreliable comparisons between and within samples. Because raw intensities aren’t always directly comparable across or within images, quality control is an essential next step after segmentation.
+Variability in marker intensity across images is a common challenge in spatial imaging, often driven by technical factors like staining efficiency, imaging conditions, or sample preparation. These inconsistencies can blur the distinction between marker-positive and -negative cells, leading to misclassification and unreliable comparisons between and within samples. Because raw intensities aren’t always directly make mcomparable across or within images, quality control is an essential next step after segmentation.
 
 Below, we extract marker intensities from the `counts` assay and take a closer look at the cytokeratin 7 (`CK7`) marker, which is often used as a diagnostic marker in breast cancer.
 
@@ -381,7 +375,6 @@ cells <- runFuseSOM(
   assay = "norm",
   numClusters = 12
 )
-
 ```
 
 ## Check how many clusters should be used
@@ -450,7 +443,7 @@ It’s always helpful to examine the number of cells in each cluster, as this pr
 # Check cluster frequencies.
 colData(cells) |>
   as.data.frame() |>
-  dplyr::count(cellType, sort = TRUE) |>
+  dplyr::count(cellType, sort = TRUE) |> 
   knitr::kable()
 ```
 
@@ -503,7 +496,7 @@ scater::plotReducedDim(
 A typical question of top priority would be to test whether certain cell types are more or less abundant across disease states. We recommend using a package such as `diffcyt` for testing for changes in abundance of cell types. However, the `colTest` function from the `spicyR` package allows us to quickly test for associations between the proportions of cell types and progression status using either Wilcoxon rank sum tests or t-tests.
 
 ```{r}
-# Perform simple wicoxon rank sum tests on the columns of the proportion matrix.
+# Perform t-tests on the columns of the proportion matrix.
 testProp <- colTest(cells,
   condition = "Status",
   feature = "cellType"
@@ -732,12 +725,18 @@ One of the results that pops up is `Tumour__T_cell_CD8__Immune`, which is the re
 
 ```{r fig.height=6, fig.width=7}
 # Visualise which relationships are changing the most.
-signifPlot(
-  spicyKontextual
-)
+# this was broken by new updates to ggplot
+# signifPlot(
+#   spicyKontextual)
 ```
 
 At a glance, we can see that CD8 T cells are more localised with tumour cells relative to both other immune cells and T cells.
+
+```{r}
+bind(spicyKontextual) |> 
+  ggplot(aes(x = condition, y = Tumour__T_cell_CD8__Immune)) +
+  geom_boxplot()
+```
 
 # Are there any broad spatial domains associated with progression?
 
@@ -980,8 +979,8 @@ set.seed(51773)
 # Cluster cells into spatial regions with similar composition.
 cells <- lisaClust(
   cells,
-  k = 20, # identify 50 niches
-  r = 50,
+  k = 20, # identify 20 niches
+  Rs = 50,
   spatialCoords = c("x", "y"),
   cellType = "cellType",
   regionName = "niche",
@@ -1032,7 +1031,7 @@ residuals_tab <-
 # These are the top 10 niches whose proportion is associated with progression status
 top_niches <- rownames(testNiche)[1:10]
 
-# View standardized residuals for "T_cell_CD8" across the top 10 cell types (likely a typo: should be top niches?)
+# View standardized residuals for "T_cell_CD8" across the top 10 niches
 residuals_tab["T_cell_CD8", top_niches]
 ```
 
@@ -1049,7 +1048,6 @@ cells <- cells |>
       cellType == "T_cell_CD4" ~ "T_cell",
       TRUE ~ cellType
   )))
-  
 ```
 
 The `SpatioMark` function in the Statial package quantifiers markers whose expression levels change within a given cell type depending on their spatial context. This allows us to detect context-dependent expression shifts—revealing, for instance, how the presence of neighbouring immune or tumour cells can influence a cell’s functional state.
@@ -1241,6 +1239,7 @@ data <- list()
 data[["props"]] <- getProp(cells, "cellType")
 
 # Add pair-wise associations
+# spicyR - mention
 data[["pairwise"]] <- getPairwise(
   cells,
   spatialCoords = c("x", "y"),
@@ -1261,20 +1260,6 @@ data[["pairwise"]] <- apply(data[["pairwise"]] , 2, function(x){
 # Add proportions of cells in domains/niches in each image
 data[["domain"]] <- getProp(cells, "domain")
 data[["niche"]] <- getProp(cells, "niche")
-
-# Add average marker expression in a domain
-data[["genesDomains"]] <- getMarkerMeans(cells,
-                                         imageID = "imageID",
-                                         region = "domain")
-
-
-# Add average marker expression per cell type in a domain
-data[["genesCellsDomains"]] <- getMarkerMeans(cells,
-                                         imageID = "imageID",
-                                         cellType = "cellTypeMergeTcells",
-                                         region = "domain")
-
-
 
 # Add marker expression vs proximity to cell type (spatioMark)
 data[["spatioMark"]] <- stateMatTcells
